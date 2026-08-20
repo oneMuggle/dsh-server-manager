@@ -10,6 +10,8 @@ from fastapi import Request, WebSocket
 from fastapi.responses import Response, StreamingResponse
 from starlette.websockets import WebSocketDisconnect
 
+from .upload_ui import UPLOAD_WIDGET
+
 HOP_BY_HOP = {
     "connection",
     "keep-alive",
@@ -100,6 +102,7 @@ async def _request_body(request: Request) -> AsyncIterator[bytes]:
 
 def _patch_html(body: bytes) -> bytes:
     body = body.replace(b"<head>", b"<head>" + UUID_SHIM, 1)
+    body = body.replace(b"<body>", b"<body>" + UPLOAD_WIDGET, 1)
     body = body.replace(
         CONNECTION_MODULE.encode() + b"?rev=",
         CONNECTION_MODULE.encode() + b"?lan=2&rev=",

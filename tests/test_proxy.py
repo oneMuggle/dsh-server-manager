@@ -9,12 +9,13 @@ from gateway.pages import auth_page
 class ProxyTransformTests(unittest.TestCase):
     def test_html_injects_compatibility_script_and_cache_buster(self) -> None:
         original = (
-            b'<html><head></head><script src="/plugins/@deepseek-ai/'
-            b'dsh-client-connection/client.js?rev=abc"></script></html>'
+            b'<html><head></head><body><script src="/plugins/@deepseek-ai/'
+            b'dsh-client-connection/client.js?rev=abc"></script></body></html>'
         )
         transformed = _patch_html(original)
         self.assertIn(UUID_SHIM, transformed)
         self.assertIn(b"client.js?lan=2&rev=abc", transformed)
+        self.assertIn("上传文件".encode(), transformed)
 
     def test_connection_module_forces_loopback_capabilities(self) -> None:
         original = b"const connection = {" + LOOPBACK_CHECK + b"};"

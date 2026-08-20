@@ -12,10 +12,10 @@ class SupervisorError(RuntimeError):
         self.code = code
 
 
-async def create_user(
+async def _request(
     socket_path: Path,
-    username: str,
-    password_record: dict[str, Any],
+    request: dict[str, Any],
+    timeout: float,
 ) -> dict[str, Any]:
     try:
         reader, writer = await asyncio.wait_for(
@@ -25,14 +25,9 @@ async def create_user(
         raise SupervisorError("user service is unavailable", "unavailable") from error
 
     try:
-        request = {
-            "action": "create_user",
-            "username": username,
-            "password": password_record,
-        }
         writer.write(json.dumps(request, separators=(",", ":")).encode("utf-8") + b"\n")
         await writer.drain()
-        line = await asyncio.wait_for(reader.readline(), timeout=130)
+        line = await asyncio.wait_for(reader.readline(), timeout=timeout)
         if not line:
             raise SupervisorError("user service closed the request", "unavailable")
         response = json.loads(line)
@@ -47,3 +42,41 @@ async def create_user(
     finally:
         writer.close()
         await writer.wait_closed()
+
+
+async def create_user(
+    socket_path: Path,
+    username: str,
+    password_record: dict[str, Any],
+) -> dict[str, Any]:
+    return await _request(
+        socket_path,
+        {
+            "action": "create_user",
+            "username": username,
+            "password": password_record,
+        },
+        timeout=130,
+    )
+
+
+async def install_upload(
+    socket_path: Path,
+    username: str,
+    spool_name: str,
+    directory: str,
+    filename: str,
+    size: int,
+) -> dict[str, Any]:
+    return await _request(
+        socket_path,
+        {
+            "action": "install_upload",
+            "username": username,
+            "spool_name": spool_name,
+            "directory": directory,
+            "filename": filename,
+            "size": size,
+        },
+        timeout=130,
+    )

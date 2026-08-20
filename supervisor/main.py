@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import errno
 import json
 import logging
 import os
@@ -14,7 +15,7 @@ import struct
 import subprocess
 import tempfile
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from .firewall import FirewallError, TenantNetwork, apply_firewall
@@ -30,6 +31,7 @@ GATEWAY_ROOT = STATE_ROOT / "gateway"
 USERS_ROOT = STATE_ROOT / "users"
 REGISTRY_PATH = GATEWAY_ROOT / "users.json"
 SECRET_PATH = GATEWAY_ROOT / "session-secret"
+UPLOAD_ROOT = GATEWAY_ROOT / "uploads"
 RUNTIME_ROOT = Path("/run/dsh")
 CONTROL_SOCKET = RUNTIME_ROOT / "control.sock"
 GATEWAY_USER = "dsh-gateway"
@@ -38,6 +40,8 @@ FIRST_UID = 20000
 FIRST_PORT = 3101
 USERNAME_PATTERN = re.compile(r"^[a-z][a-z0-9_-]{2,23}$")
 HARNESS_CLI = "/opt/deepseek-harness/apps/cli/lib/bin.js"
+UPLOAD_SPOOL_PATTERN = re.compile(r"^[0-9a-f]{32}\.upload$")
+MAX_UPLOAD_BYTES = 100 * 1024 * 1024
 
 
 def _atomic_json_write(path: Path, value: dict[str, Any]) -> None:
@@ -93,6 +97,15 @@ def _ensure_gateway_state() -> None:
         SECRET_PATH.write_text(secrets.token_urlsafe(48), encoding="ascii")
     os.chown(SECRET_PATH, 0, gateway.pw_gid)
     os.chmod(SECRET_PATH, 0o640)
+    UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
+    os.chown(UPLOAD_ROOT, gateway.pw_uid, gateway.pw_gid)
+    os.chmod(UPLOAD_ROOT, 0o700)
+    for entry in UPLOAD_ROOT.iterdir():
+        try:
+            if entry.is_file() or entry.is_symlink():
+                entry.unlink()
+        except FileNotFoundError:
+            pass
 
 
 def _provision_os_user(user: dict[str, Any]) -> None:
@@ -155,6 +168,163 @@ def _valid_password_record(value: Any) -> bool:
         )
     except (KeyError, TypeError, ValueError):
         return False
+
+
+def _upload_directory_parts(value: str) -> tuple[str, ...]:
+    if value in {"", "."}:
+        return ()
+    if len(value) > 512 or "\\" in value:
+        raise ValueError("无效的目标目录")
+    path = PurePosixPath(value)
+    if path.is_absolute():
+        raise ValueError("目标目录必须相对于 workspace")
+    parts = path.parts
+    if any(part in {"", ".", ".."} or part.startswith(".") for part in parts):
+        raise ValueError("目标目录不能包含隐藏目录、. 或 ..")
+    if any(len(part.encode("utf-8")) > 255 for part in parts):
+        raise ValueError("目标目录名称过长")
+    return parts
+
+
+def _validate_upload_filename(value: str) -> str:
+    if (
+        not value
+        or value in {".", ".."}
+        or value.startswith(".")
+        or "/" in value
+        or "\\" in value
+        or "\x00" in value
+        or len(value.encode("utf-8")) > 255
+    ):
+        raise ValueError("无效的文件名")
+    return value
+
+
+def _open_owned_directory(parent_fd: int, name: str, uid: int, gid: int) -> int:
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(name, flags, dir_fd=parent_fd)
+    except FileNotFoundError:
+        os.mkdir(name, 0o700, dir_fd=parent_fd)
+        os.chown(name, uid, gid, dir_fd=parent_fd, follow_symlinks=False)
+        descriptor = os.open(name, flags, dir_fd=parent_fd)
+    except OSError as error:
+        if error.errno in {errno.EACCES, errno.ELOOP, errno.ENOTDIR}:
+            raise ValueError("目标目录不是安全的普通目录") from error
+        raise
+    metadata = os.fstat(descriptor)
+    if not stat.S_ISDIR(metadata.st_mode) or metadata.st_uid != uid:
+        os.close(descriptor)
+        raise ValueError("目标目录不属于当前用户")
+    return descriptor
+
+
+def _install_uploaded_file(
+    user: dict[str, Any],
+    spool_name: str,
+    directory: str,
+    filename: str,
+    expected_size: int,
+) -> dict[str, Any]:
+    if not UPLOAD_SPOOL_PATTERN.fullmatch(spool_name):
+        raise ValueError("无效的上传临时文件")
+    if expected_size < 0 or expected_size > MAX_UPLOAD_BYTES:
+        raise ValueError("上传文件大小无效")
+    parts = _upload_directory_parts(directory)
+    filename = _validate_upload_filename(filename)
+    uid = int(user["uid"])
+    gid = pwd.getpwnam(str(user["os_user"])).pw_gid
+    gateway_uid = pwd.getpwnam(GATEWAY_USER).pw_uid
+
+    source_path = UPLOAD_ROOT / spool_name
+    source_fd = os.open(
+        source_path,
+        os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0),
+    )
+    workspace_fd = -1
+    target_fd = -1
+    temporary_name = f".upload-{secrets.token_hex(12)}.tmp"
+    try:
+        source_metadata = os.fstat(source_fd)
+        if (
+            not stat.S_ISREG(source_metadata.st_mode)
+            or source_metadata.st_uid != gateway_uid
+            or source_metadata.st_size != expected_size
+        ):
+            raise ValueError("上传临时文件校验失败")
+
+        tenant_root = USERS_ROOT / str(user["username"])
+        root_fd = os.open(
+            tenant_root,
+            os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0),
+        )
+        try:
+            home_fd = _open_owned_directory(root_fd, "home", uid, gid)
+        finally:
+            os.close(root_fd)
+        try:
+            workspace_fd = _open_owned_directory(home_fd, "workspace", uid, gid)
+        finally:
+            os.close(home_fd)
+
+        directory_fd = workspace_fd
+        for part in parts:
+            next_fd = _open_owned_directory(directory_fd, part, uid, gid)
+            if directory_fd != workspace_fd:
+                os.close(directory_fd)
+            directory_fd = next_fd
+        target_fd = directory_fd
+
+        destination_fd = os.open(
+            temporary_name,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0),
+            0o600,
+            dir_fd=target_fd,
+        )
+        try:
+            while True:
+                chunk = os.read(source_fd, 64 * 1024)
+                if not chunk:
+                    break
+                remaining = memoryview(chunk)
+                while remaining:
+                    written = os.write(destination_fd, remaining)
+                    if written == 0:
+                        raise OSError("failed to write uploaded file")
+                    remaining = remaining[written:]
+            os.fchmod(destination_fd, 0o600)
+            os.fchown(destination_fd, uid, gid)
+            os.fsync(destination_fd)
+        finally:
+            os.close(destination_fd)
+        os.replace(
+            temporary_name,
+            filename,
+            src_dir_fd=target_fd,
+            dst_dir_fd=target_fd,
+        )
+        os.fsync(target_fd)
+    except BaseException:
+        if target_fd >= 0:
+            try:
+                os.unlink(temporary_name, dir_fd=target_fd)
+            except FileNotFoundError:
+                pass
+        raise
+    finally:
+        if target_fd >= 0 and target_fd != workspace_fd:
+            os.close(target_fd)
+        if workspace_fd >= 0:
+            os.close(workspace_fd)
+        os.close(source_fd)
+        source_path.unlink(missing_ok=True)
+
+    normalized_directory = "." if not parts else "/".join(parts)
+    return {
+        "directory": normalized_directory,
+        "filename": filename,
+        "size": expected_size,
+    }
 
 
 async def _http_ready(port: int) -> bool:
@@ -313,6 +483,27 @@ class Supervisor:
             "ready": ready,
         }
 
+    async def install_upload(
+        self,
+        username: str,
+        spool_name: str,
+        directory: str,
+        filename: str,
+        size: int,
+    ) -> dict[str, Any]:
+        registry = _load_registry()
+        user = registry["users"].get(username)
+        if not isinstance(user, dict) or user.get("disabled") is True:
+            raise ValueError("用户不存在或已停用")
+        return await asyncio.to_thread(
+            _install_uploaded_file,
+            user,
+            spool_name,
+            directory,
+            filename,
+            size,
+        )
+
     def _authorized_peer(self, writer: asyncio.StreamWriter) -> bool:
         transport_socket = writer.get_extra_info("socket")
         if transport_socket is None or not hasattr(socket, "SO_PEERCRED"):
@@ -330,41 +521,50 @@ class Supervisor:
             else:
                 line = await asyncio.wait_for(reader.readline(), timeout=10)
                 request = json.loads(line)
-                if request.get("action") != "create_user":
-                    response = {"ok": False, "code": "bad_request", "message": "unknown action"}
-                else:
-                    try:
+                action = request.get("action")
+                try:
+                    if action == "create_user":
                         result = await self.create_user(
                             str(request.get("username", "")), request.get("password")
                         )
-                        response = {"ok": True, **result}
-                    except FileExistsError:
-                        response = {
-                            "ok": False,
-                            "code": "conflict",
-                            "message": "用户名已存在",
-                        }
-                    except ValueError as error:
-                        response = {
-                            "ok": False,
-                            "code": "bad_request",
-                            "message": str(error),
-                        }
-                    except FirewallError:
-                        LOGGER.exception("firewall update failed; stopping container")
-                        self.fatal.set()
-                        response = {
-                            "ok": False,
-                            "code": "supervisor_error",
-                            "message": "租户隔离更新失败",
-                        }
-                    except Exception:
-                        LOGGER.exception("unable to create tenant")
-                        response = {
-                            "ok": False,
-                            "code": "supervisor_error",
-                            "message": "创建用户失败",
-                        }
+                    elif action == "install_upload":
+                        result = await self.install_upload(
+                            str(request.get("username", "")),
+                            str(request.get("spool_name", "")),
+                            str(request.get("directory", "")),
+                            str(request.get("filename", "")),
+                            int(request.get("size", -1)),
+                        )
+                    else:
+                        raise ValueError("unknown action")
+                    response = {"ok": True, **result}
+                except FileExistsError:
+                    response = {
+                        "ok": False,
+                        "code": "conflict",
+                        "message": "用户名已存在",
+                    }
+                except (TypeError, ValueError) as error:
+                    response = {
+                        "ok": False,
+                        "code": "bad_request",
+                        "message": str(error),
+                    }
+                except FirewallError:
+                    LOGGER.exception("firewall update failed; stopping container")
+                    self.fatal.set()
+                    response = {
+                        "ok": False,
+                        "code": "supervisor_error",
+                        "message": "租户隔离更新失败",
+                    }
+                except Exception:
+                    LOGGER.exception("control action %s failed", action)
+                    response = {
+                        "ok": False,
+                        "code": "supervisor_error",
+                        "message": "操作失败",
+                    }
         except (asyncio.TimeoutError, json.JSONDecodeError):
             response = {"ok": False, "code": "bad_request", "message": "invalid request"}
         try:

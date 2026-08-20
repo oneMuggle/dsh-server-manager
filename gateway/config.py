@@ -10,11 +10,13 @@ class Config:
     state_root: Path
     registry_path: Path
     session_secret_path: Path
+    upload_spool_path: Path
     control_socket_path: Path
     cookie_name: str
     cookie_secure: bool
     session_ttl_seconds: int
     max_transform_bytes: int
+    max_upload_bytes: int
 
     @classmethod
     def from_environment(cls) -> "Config":
@@ -24,6 +26,7 @@ class Config:
             state_root=state_root,
             registry_path=gateway_root / "users.json",
             session_secret_path=gateway_root / "session-secret",
+            upload_spool_path=gateway_root / "uploads",
             control_socket_path=Path(
                 os.environ.get("DSH_CONTROL_SOCKET", "/run/dsh/control.sock")
             ),
@@ -31,4 +34,5 @@ class Config:
             cookie_secure=os.environ.get("DSH_COOKIE_SECURE", "0") == "1",
             session_ttl_seconds=7 * 24 * 60 * 60,
             max_transform_bytes=8 * 1024 * 1024,
+            max_upload_bytes=100 * 1024 * 1024,
         )
