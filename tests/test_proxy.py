@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 
 from gateway.proxy import LOOPBACK_CHECK, UUID_SHIM, _patch_connection_module, _patch_html
+from gateway.pages import auth_page
 
 
 class ProxyTransformTests(unittest.TestCase):
@@ -20,6 +21,19 @@ class ProxyTransformTests(unittest.TestCase):
         transformed = _patch_connection_module(original)
         self.assertIn(b"isLoopback: true", transformed)
         self.assertNotIn(LOOPBACK_CHECK, transformed)
+
+
+class AuthenticationPageTests(unittest.TestCase):
+    def test_login_page_has_registration_button(self) -> None:
+        page = auth_page("login")
+        self.assertIn('class="secondary-button"', page)
+        self.assertIn('href="/register"', page)
+        self.assertIn("注册新账号", page)
+
+    def test_registration_page_links_back_to_login(self) -> None:
+        page = auth_page("register")
+        self.assertIn('href="/login"', page)
+        self.assertIn("返回登录", page)
 
 
 if __name__ == "__main__":

@@ -194,11 +194,7 @@ async def me(request: Request) -> dict[str, str]:
     return {"username": str(user["username"])}
 
 
-@app.api_route(
-    "/{path:path}",
-    methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-)
-async def harness_proxy(request: Request, path: str) -> Response:
+async def _proxy_authenticated_request(request: Request) -> Response:
     user = _request_user(request)
     if not user:
         if request.method in {"GET", "HEAD"}:
@@ -210,6 +206,23 @@ async def harness_proxy(request: Request, path: str) -> Response:
         int(user["port"]),
         config.max_transform_bytes,
     )
+
+
+@app.api_route(
+    "/",
+    methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+)
+async def main_page(request: Request) -> Response:
+    """Authenticated main entry; the DSH Web application is the main interface."""
+    return await _proxy_authenticated_request(request)
+
+
+@app.api_route(
+    "/{path:path}",
+    methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+)
+async def harness_proxy(request: Request, path: str) -> Response:
+    return await _proxy_authenticated_request(request)
 
 
 @app.websocket("/{path:path}")

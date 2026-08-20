@@ -6,7 +6,7 @@ from html import escape
 def auth_page(mode: str) -> str:
     is_register = mode == "register"
     title = "注册" if is_register else "登录"
-    alternate = "已有账号？登录" if is_register else "没有账号？注册"
+    alternate = "返回登录" if is_register else "注册新账号"
     alternate_path = "/login" if is_register else "/register"
     endpoint = f"/api/gateway/v1/auth/{mode}"
     return f"""<!doctype html>
@@ -21,10 +21,10 @@ def auth_page(mode: str) -> str:
     main {{ width: min(360px, calc(100vw - 48px)); padding: 32px; border: 1px solid #303746; border-radius: 16px; background: #181d27; }}
     h1 {{ margin: 0 0 24px; font-size: 24px; }}
     label {{ display: grid; gap: 8px; margin: 16px 0; font-size: 14px; }}
-    input, button {{ box-sizing: border-box; width: 100%; padding: 12px; border-radius: 8px; font: inherit; }}
+    input, button, .secondary-button {{ box-sizing: border-box; width: 100%; padding: 12px; border-radius: 8px; font: inherit; }}
     input {{ border: 1px solid #465066; background: #10131a; color: inherit; }}
     button {{ margin-top: 8px; border: 0; background: #4f7cff; color: white; cursor: pointer; }}
-    a {{ color: #8eacff; }}
+    .secondary-button {{ display: block; border: 1px solid #465066; color: #dce4ff; text-align: center; text-decoration: none; }}
     #error {{ min-height: 20px; color: #ff8a8a; font-size: 14px; }}
     p {{ margin-bottom: 0; }}
   </style>
@@ -37,7 +37,7 @@ def auth_page(mode: str) -> str:
     <div id="error"></div>
     <button type="submit">{escape(title)}</button>
   </form>
-  <p><a href="{alternate_path}">{escape(alternate)}</a></p>
+  <p><a class="secondary-button" href="{alternate_path}">{escape(alternate)}</a></p>
 </main>
 <script>
 document.getElementById('auth-form').addEventListener('submit', async (event) => {{
