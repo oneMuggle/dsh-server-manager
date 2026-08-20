@@ -80,3 +80,19 @@ async def install_upload(
         },
         timeout=130,
     )
+
+
+async def list_upload_directories(
+    socket_path: Path,
+    username: str,
+    directory: str,
+) -> dict[str, Any]:
+    return await _request(
+        socket_path,
+        {
+            "action": "list_upload_directories",
+            "username": username,
+            "directory": directory,
+        },
+        timeout=15,
+    )

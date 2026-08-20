@@ -17,6 +17,8 @@ class ProxyTransformTests(unittest.TestCase):
         self.assertIn(UUID_SHIM, transformed)
         self.assertIn(b"client.js?lan=2&rev=abc", transformed)
         self.assertIn("上传文件".encode(), transformed)
+        self.assertIn(b"/api/gateway/v1/files/directories", transformed)
+        self.assertIn("上传到当前目录".encode(), transformed)
         self.assertNotIn("管理后台".encode(), transformed)
 
     def test_admin_html_includes_management_entry(self) -> None:

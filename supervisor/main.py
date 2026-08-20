@@ -251,11 +251,19 @@ def _validate_upload_filename(value: str) -> str:
     return value
 
 
-def _open_owned_directory(parent_fd: int, name: str, uid: int, gid: int) -> int:
+def _open_owned_directory(
+    parent_fd: int,
+    name: str,
+    uid: int,
+    gid: int,
+    create: bool = True,
+) -> int:
     flags = os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0)
     try:
         descriptor = os.open(name, flags, dir_fd=parent_fd)
     except FileNotFoundError:
+        if not create:
+            raise ValueError("目标目录不存在")
         os.mkdir(name, 0o700, dir_fd=parent_fd)
         os.chown(name, uid, gid, dir_fd=parent_fd, follow_symlinks=False)
         descriptor = os.open(name, flags, dir_fd=parent_fd)
@@ -268,6 +276,79 @@ def _open_owned_directory(parent_fd: int, name: str, uid: int, gid: int) -> int:
         os.close(descriptor)
         raise ValueError("目标目录不属于当前用户")
     return descriptor
+
+
+def _list_upload_directories(
+    user: dict[str, Any],
+    directory: str,
+) -> dict[str, Any]:
+    parts = _upload_directory_parts(directory)
+    uid = int(user["uid"])
+    gid = pwd.getpwnam(str(user["os_user"])).pw_gid
+    tenant_root = USERS_ROOT / str(user["username"])
+    workspace_fd = -1
+    target_fd = -1
+    root_fd = os.open(
+        tenant_root,
+        os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0),
+    )
+    try:
+        home_fd = _open_owned_directory(root_fd, "home", uid, gid, create=False)
+    finally:
+        os.close(root_fd)
+    try:
+        workspace_fd = _open_owned_directory(
+            home_fd,
+            "workspace",
+            uid,
+            gid,
+            create=False,
+        )
+    finally:
+        os.close(home_fd)
+
+    try:
+        directory_fd = workspace_fd
+        target_fd = directory_fd
+        for part in parts:
+            next_fd = _open_owned_directory(
+                directory_fd,
+                part,
+                uid,
+                gid,
+                create=False,
+            )
+            if directory_fd != workspace_fd:
+                os.close(directory_fd)
+            directory_fd = next_fd
+            target_fd = directory_fd
+
+        names: list[str] = []
+        with os.scandir(target_fd) as entries:
+            for entry in entries:
+                if entry.name.startswith(".") or not entry.is_dir(follow_symlinks=False):
+                    continue
+                try:
+                    metadata = entry.stat(follow_symlinks=False)
+                except OSError:
+                    continue
+                if metadata.st_uid == uid:
+                    names.append(entry.name)
+        names.sort(key=str.casefold)
+        truncated = len(names) > 2000
+        if truncated:
+            names = names[:2000]
+    finally:
+        if target_fd >= 0 and target_fd != workspace_fd:
+            os.close(target_fd)
+        if workspace_fd >= 0:
+            os.close(workspace_fd)
+
+    return {
+        "directory": "." if not parts else "/".join(parts),
+        "directories": names,
+        "truncated": truncated,
+    }
 
 
 def _install_uploaded_file(
@@ -319,12 +400,13 @@ def _install_uploaded_file(
             os.close(home_fd)
 
         directory_fd = workspace_fd
+        target_fd = directory_fd
         for part in parts:
             next_fd = _open_owned_directory(directory_fd, part, uid, gid)
             if directory_fd != workspace_fd:
                 os.close(directory_fd)
             directory_fd = next_fd
-        target_fd = directory_fd
+            target_fd = directory_fd
 
         destination_fd = os.open(
             temporary_name,
@@ -542,6 +624,17 @@ class Supervisor:
             size,
         )
 
+    async def list_upload_directories(
+        self,
+        username: str,
+        directory: str,
+    ) -> dict[str, Any]:
+        registry = _load_registry()
+        user = registry["users"].get(username)
+        if not isinstance(user, dict) or user.get("disabled") is True:
+            raise ValueError("用户不存在或已停用")
+        return await asyncio.to_thread(_list_upload_directories, user, directory)
+
     def _authorized_peer(self, writer: asyncio.StreamWriter) -> bool:
         transport_socket = writer.get_extra_info("socket")
         if transport_socket is None or not hasattr(socket, "SO_PEERCRED"):
@@ -572,6 +665,11 @@ class Supervisor:
                             str(request.get("directory", "")),
                             str(request.get("filename", "")),
                             int(request.get("size", -1)),
+                        )
+                    elif action == "list_upload_directories":
+                        result = await self.list_upload_directories(
+                            str(request.get("username", "")),
+                            str(request.get("directory", ".")),
                         )
                     else:
                         raise ValueError("unknown action")

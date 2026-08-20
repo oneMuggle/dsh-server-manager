@@ -25,7 +25,12 @@ from .config import Config
 from .pages import admin_page, auth_page
 from .proxy import cookie_from_websocket, proxy_http, proxy_websocket
 from .registry import RegistryError, get_user, load_registry
-from .supervisor_client import SupervisorError, create_user, install_upload
+from .supervisor_client import (
+    SupervisorError,
+    create_user,
+    install_upload,
+    list_upload_directories,
+)
 
 LOGGER = logging.getLogger("dsh.gateway")
 USERNAME_PATTERN = re.compile(r"^[a-z][a-z0-9_-]{2,23}$")
@@ -58,6 +63,12 @@ class RegisteredUser(BaseModel):
 
 class RegisteredUsers(BaseModel):
     users: list[RegisteredUser]
+
+
+class DirectoryListing(BaseModel):
+    directory: str
+    directories: list[str]
+    truncated: bool
 
 
 def _client_key(request: Request) -> str:
@@ -293,6 +304,31 @@ async def registered_users(token: SessionCookie) -> RegisteredUsers:
     ]
     users.sort(key=lambda user: (user.created_at, user.username))
     return RegisteredUsers(users=users)
+
+
+@app.get(
+    "/api/gateway/v1/files/directories",
+    response_model=DirectoryListing,
+    tags=["文件"],
+    summary="列出当前用户工作区目录",
+)
+async def upload_directories(
+    token: SessionCookie,
+    directory: str = ".",
+) -> DirectoryListing:
+    user = _require_session(token)
+    if len(directory) > 512:
+        raise HTTPException(status_code=400, detail="目标目录过长")
+    try:
+        result = await list_upload_directories(
+            config.control_socket_path,
+            str(user["username"]),
+            directory,
+        )
+    except SupervisorError as error:
+        status = 400 if error.code == "bad_request" else 503
+        raise HTTPException(status_code=status, detail=str(error)) from error
+    return DirectoryListing.model_validate(result)
 
 
 @app.post(
