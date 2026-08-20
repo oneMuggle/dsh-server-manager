@@ -10,7 +10,7 @@ from fastapi import Request, WebSocket
 from fastapi.responses import Response, StreamingResponse
 from starlette.websockets import WebSocketDisconnect
 
-from .upload_ui import UPLOAD_WIDGET
+from .upload_ui import ADMIN_WIDGET, UPLOAD_WIDGET
 
 HOP_BY_HOP = {
     "connection",
@@ -100,9 +100,10 @@ async def _request_body(request: Request) -> AsyncIterator[bytes]:
             yield chunk
 
 
-def _patch_html(body: bytes) -> bytes:
+def _patch_html(body: bytes, is_admin: bool = False) -> bytes:
     body = body.replace(b"<head>", b"<head>" + UUID_SHIM, 1)
-    body = body.replace(b"<body>", b"<body>" + UPLOAD_WIDGET, 1)
+    widgets = UPLOAD_WIDGET + (ADMIN_WIDGET if is_admin else b"")
+    body = body.replace(b"<body>", b"<body>" + widgets, 1)
     body = body.replace(
         CONNECTION_MODULE.encode() + b"?rev=",
         CONNECTION_MODULE.encode() + b"?lan=2&rev=",
@@ -134,6 +135,7 @@ async def proxy_http(
     session: aiohttp.ClientSession,
     port: int,
     max_transform_bytes: int,
+    is_admin: bool = False,
 ) -> Response:
     url = _upstream_url(port, request.url.path, request.url.query)
     try:
@@ -159,7 +161,7 @@ async def proxy_http(
             if body is None:
                 return Response("upstream response is too large", status_code=502)
             if is_html:
-                body = _patch_html(body)
+                body = _patch_html(body, is_admin=is_admin)
             if is_connection_module:
                 body = _patch_connection_module(body)
             return Response(

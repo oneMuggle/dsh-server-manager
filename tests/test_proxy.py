@@ -3,7 +3,8 @@ from __future__ import annotations
 import unittest
 
 from gateway.proxy import LOOPBACK_CHECK, UUID_SHIM, _patch_connection_module, _patch_html
-from gateway.pages import auth_page
+from gateway.main import app
+from gateway.pages import admin_page, auth_page
 
 
 class ProxyTransformTests(unittest.TestCase):
@@ -16,6 +17,12 @@ class ProxyTransformTests(unittest.TestCase):
         self.assertIn(UUID_SHIM, transformed)
         self.assertIn(b"client.js?lan=2&rev=abc", transformed)
         self.assertIn("上传文件".encode(), transformed)
+        self.assertNotIn("管理后台".encode(), transformed)
+
+    def test_admin_html_includes_management_entry(self) -> None:
+        transformed = _patch_html(b"<html><head></head><body></body></html>", is_admin=True)
+        self.assertIn(b'href="/admin"', transformed)
+        self.assertIn("管理后台".encode(), transformed)
 
     def test_connection_module_forces_loopback_capabilities(self) -> None:
         original = b"const connection = {" + LOOPBACK_CHECK + b"};"
@@ -35,6 +42,19 @@ class AuthenticationPageTests(unittest.TestCase):
         page = auth_page("register")
         self.assertIn('href="/login"', page)
         self.assertIn("返回登录", page)
+
+
+class ManagementPageTests(unittest.TestCase):
+    def test_management_page_loads_users_and_links_swagger(self) -> None:
+        page = admin_page()
+        self.assertIn("/api/gateway/v1/admin/users", page)
+        self.assertIn('href="/docs"', page)
+        self.assertIn("用户管理", page)
+
+    def test_swagger_and_openapi_are_enabled(self) -> None:
+        paths = {getattr(route, "path", "") for route in app.routes}
+        self.assertIn("/docs", paths)
+        self.assertIn("/openapi.json", paths)
 
 
 if __name__ == "__main__":

@@ -93,3 +93,15 @@ UPLOAD_WIDGET = """
 })();
 </script>
 """.encode("utf-8")
+
+ADMIN_WIDGET = """
+<style>
+  #dshgw-admin-button {
+    position: fixed; right: 24px; bottom: 78px; z-index: 2147483000;
+    border: 1px solid #465066; border-radius: 999px; padding: 11px 17px;
+    color: #f5f7fb; background: #181d27; box-shadow: 0 8px 28px #0005;
+    font: 600 14px/1 system-ui, sans-serif; text-decoration: none;
+  }
+</style>
+<a id="dshgw-admin-button" href="/admin">管理后台</a>
+""".encode("utf-8")

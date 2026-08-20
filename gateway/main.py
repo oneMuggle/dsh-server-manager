@@ -6,11 +6,12 @@ import os
 import re
 import secrets
 from contextlib import asynccontextmanager
-from typing import Annotated
+from typing import Annotated, Literal
 
 import aiohttp
-from fastapi import FastAPI, HTTPException, Request, WebSocket
+from fastapi import FastAPI, HTTPException, Request, Security, WebSocket
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
+from fastapi.security import APIKeyCookie
 from pydantic import BaseModel, ConfigDict, Field
 
 from .auth import (
@@ -21,9 +22,9 @@ from .auth import (
     verify_password,
 )
 from .config import Config
-from .pages import auth_page
+from .pages import admin_page, auth_page
 from .proxy import cookie_from_websocket, proxy_http, proxy_websocket
-from .registry import RegistryError, get_user
+from .registry import RegistryError, get_user, load_registry
 from .supervisor_client import SupervisorError, create_user, install_upload
 
 LOGGER = logging.getLogger("dsh.gateway")
@@ -32,6 +33,8 @@ config = Config.from_environment()
 login_ip_limiter = FixedWindowLimiter(attempts=30, seconds=60)
 login_account_limiter = FixedWindowLimiter(attempts=10, seconds=60)
 register_limiter = FixedWindowLimiter(attempts=5, seconds=300)
+session_cookie = APIKeyCookie(name=config.cookie_name, auto_error=False)
+SessionCookie = Annotated[str | None, Security(session_cookie)]
 
 
 class Credentials(BaseModel):
@@ -39,6 +42,22 @@ class Credentials(BaseModel):
 
     username: Annotated[str, Field(min_length=3, max_length=24)]
     password: Annotated[str, Field(min_length=8, max_length=256)]
+
+
+class CurrentUser(BaseModel):
+    username: str
+    role: Literal["admin", "user"]
+
+
+class RegisteredUser(BaseModel):
+    username: str
+    role: Literal["admin", "user"]
+    disabled: bool
+    created_at: str
+
+
+class RegisteredUsers(BaseModel):
+    users: list[RegisteredUser]
 
 
 def _client_key(request: Request) -> str:
@@ -65,6 +84,24 @@ def _resolve_user(token: str | None) -> dict | None:
 
 def _request_user(request: Request) -> dict | None:
     return _resolve_user(request.cookies.get(config.cookie_name))
+
+
+def _user_role(user: dict) -> Literal["admin", "user"]:
+    return "admin" if user.get("role") == "admin" else "user"
+
+
+def _require_session(token: str | None) -> dict:
+    user = _resolve_user(token)
+    if not user:
+        raise HTTPException(status_code=401, detail="未登录")
+    return user
+
+
+def _require_admin(token: str | None) -> dict:
+    user = _require_session(token)
+    if _user_role(user) != "admin":
+        raise HTTPException(status_code=403, detail="需要管理员权限")
+    return user
 
 
 def _set_session(response: Response, user: dict) -> None:
@@ -96,34 +133,41 @@ async def lifespan(application: FastAPI):
 
 app = FastAPI(
     title="DSH LAN Gateway",
-    version="0.1.0",
-    docs_url=None,
+    description="DeepSeek Harness 多用户局域网网关。受保护接口使用登录后生成的 HttpOnly Cookie。",
+    version="0.2.0",
+    docs_url="/docs",
     redoc_url=None,
-    openapi_url=None,
+    openapi_url="/openapi.json",
     lifespan=lifespan,
 )
 
 
-@app.get("/api/gateway/v1/health")
+@app.get("/api/gateway/v1/health", tags=["系统"], summary="健康检查")
 async def health() -> dict[str, bool]:
     return {"ok": True}
 
 
-@app.get("/login", response_class=HTMLResponse)
+@app.get("/login", response_class=HTMLResponse, include_in_schema=False)
 async def login_page(request: Request) -> Response:
     if _request_user(request):
         return RedirectResponse("/", status_code=303)
     return HTMLResponse(auth_page("login"), headers={"Cache-Control": "no-store"})
 
 
-@app.get("/register", response_class=HTMLResponse)
+@app.get("/register", response_class=HTMLResponse, include_in_schema=False)
 async def register_page(request: Request) -> Response:
     if _request_user(request):
         return RedirectResponse("/", status_code=303)
     return HTMLResponse(auth_page("register"), headers={"Cache-Control": "no-store"})
 
 
-@app.post("/api/gateway/v1/auth/register", status_code=201)
+@app.post(
+    "/api/gateway/v1/auth/register",
+    status_code=201,
+    response_model=CurrentUser,
+    tags=["认证"],
+    summary="注册账号",
+)
 async def register(request: Request, credentials: Credentials) -> Response:
     if not register_limiter.allow(_client_key(request)):
         raise HTTPException(status_code=429, detail="注册请求过于频繁")
@@ -147,13 +191,22 @@ async def register(request: Request, credentials: Credentials) -> Response:
     user = {
         "username": result["username"],
         "password_version": result["password_version"],
+        "role": result["role"],
     }
-    response = JSONResponse({"username": result["username"]}, status_code=201)
+    response = JSONResponse(
+        {"username": result["username"], "role": result["role"]},
+        status_code=201,
+    )
     _set_session(response, user)
     return response
 
 
-@app.post("/api/gateway/v1/auth/login")
+@app.post(
+    "/api/gateway/v1/auth/login",
+    response_model=CurrentUser,
+    tags=["认证"],
+    summary="登录",
+)
 async def login(request: Request, credentials: Credentials) -> Response:
     client = _client_key(request)
     account_key = f"{client}:{credentials.username}"
@@ -176,31 +229,90 @@ async def login(request: Request, credentials: Credentials) -> Response:
     if not valid or user is None:
         raise HTTPException(status_code=401, detail="用户名或密码错误")
 
-    response = JSONResponse({"username": user["username"]})
+    response = JSONResponse(
+        {"username": user["username"], "role": _user_role(user)}
+    )
     _set_session(response, user)
     return response
 
 
-@app.post("/api/gateway/v1/auth/logout", status_code=204)
+@app.post(
+    "/api/gateway/v1/auth/logout",
+    status_code=204,
+    tags=["认证"],
+    summary="退出登录",
+)
 async def logout() -> Response:
     response = Response(status_code=204)
     response.delete_cookie(config.cookie_name, path="/")
     return response
 
 
-@app.get("/api/gateway/v1/auth/me")
-async def me(request: Request) -> dict[str, str]:
-    user = _request_user(request)
-    if not user:
-        raise HTTPException(status_code=401, detail="未登录")
-    return {"username": str(user["username"])}
+@app.get(
+    "/api/gateway/v1/auth/me",
+    response_model=CurrentUser,
+    tags=["认证"],
+    summary="查询当前账号",
+)
+async def me(token: SessionCookie) -> CurrentUser:
+    user = _require_session(token)
+    return CurrentUser(username=str(user["username"]), role=_user_role(user))
 
 
-@app.post("/api/gateway/v1/files/upload")
-async def upload_file(request: Request, directory: str = ".", name: str = "") -> Response:
+@app.get("/admin", response_class=HTMLResponse, include_in_schema=False)
+async def management_page(request: Request) -> Response:
     user = _request_user(request)
     if not user:
-        raise HTTPException(status_code=401, detail="未登录")
+        return RedirectResponse("/login", status_code=303)
+    if _user_role(user) != "admin":
+        raise HTTPException(status_code=403, detail="需要管理员权限")
+    return HTMLResponse(admin_page(), headers={"Cache-Control": "no-store"})
+
+
+@app.get(
+    "/api/gateway/v1/admin/users",
+    response_model=RegisteredUsers,
+    tags=["管理"],
+    summary="列出注册用户",
+)
+async def registered_users(token: SessionCookie) -> RegisteredUsers:
+    _require_admin(token)
+    try:
+        registry = load_registry(config.registry_path)
+    except RegistryError as error:
+        raise HTTPException(status_code=503, detail="用户服务不可用") from error
+    users = [
+        RegisteredUser(
+            username=str(user["username"]),
+            role=_user_role(user),
+            disabled=user.get("disabled") is True,
+            created_at=str(user.get("created_at", "")),
+        )
+        for user in registry["users"].values()
+        if isinstance(user, dict)
+    ]
+    users.sort(key=lambda user: (user.created_at, user.username))
+    return RegisteredUsers(users=users)
+
+
+@app.post(
+    "/api/gateway/v1/files/upload",
+    tags=["文件"],
+    summary="上传文件到当前用户工作区",
+    openapi_extra={
+        "requestBody": {
+            "required": True,
+            "content": {"application/octet-stream": {"schema": {"type": "string", "format": "binary"}}},
+        }
+    },
+)
+async def upload_file(
+    request: Request,
+    token: SessionCookie,
+    directory: str = ".",
+    name: str = "",
+) -> Response:
+    user = _require_session(token)
     if not name:
         raise HTTPException(status_code=400, detail="缺少文件名")
     if len(directory) > 512 or len(name) > 255:
@@ -280,12 +392,14 @@ async def _proxy_authenticated_request(request: Request) -> Response:
         app.state.http,
         int(user["port"]),
         config.max_transform_bytes,
+        is_admin=_user_role(user) == "admin",
     )
 
 
 @app.api_route(
     "/",
     methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    include_in_schema=False,
 )
 async def main_page(request: Request) -> Response:
     """Authenticated main entry; the DSH Web application is the main interface."""
@@ -295,6 +409,7 @@ async def main_page(request: Request) -> Response:
 @app.api_route(
     "/{path:path}",
     methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    include_in_schema=False,
 )
 async def harness_proxy(request: Request, path: str) -> Response:
     return await _proxy_authenticated_request(request)

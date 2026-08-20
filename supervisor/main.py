@@ -74,6 +74,31 @@ def _load_registry() -> dict[str, Any]:
     return value
 
 
+def _normalize_user_roles(registry: dict[str, Any]) -> bool:
+    users = registry["users"]
+    changed = False
+    valid_admins = [
+        username
+        for username, user in users.items()
+        if isinstance(user, dict) and user.get("role") == "admin"
+    ]
+    first_username = None
+    if users and not valid_admins:
+        first_username = min(
+            users,
+            key=lambda username: (
+                str(users[username].get("created_at", "")),
+                username,
+            ),
+        )
+    for username, user in users.items():
+        expected = "admin" if username == first_username else "user"
+        if user.get("role") not in {"admin", "user"}:
+            user["role"] = expected
+            changed = True
+    return changed
+
+
 def _ensure_gateway_state() -> None:
     gateway = pwd.getpwnam(GATEWAY_USER)
     STATE_ROOT.mkdir(parents=True, exist_ok=True)
@@ -465,6 +490,7 @@ class Supervisor:
                 "os_user": f"dsh-{username}",
                 "uid": uid,
                 "port": port,
+                "role": "admin" if not registry["users"] else "user",
                 "password": password,
                 "password_version": 1,
                 "created_at": datetime.now(UTC).isoformat(),
@@ -480,6 +506,7 @@ class Supervisor:
         return {
             "username": username,
             "password_version": 1,
+            "role": user["role"],
             "ready": ready,
         }
 
@@ -577,6 +604,8 @@ class Supervisor:
     async def start(self) -> None:
         _ensure_gateway_state()
         registry = _load_registry()
+        if _normalize_user_roles(registry):
+            _atomic_json_write(REGISTRY_PATH, registry)
         for user in registry["users"].values():
             _provision_os_user(user)
         apply_firewall(_network_rules(registry), gateway_port=GATEWAY_PORT)
