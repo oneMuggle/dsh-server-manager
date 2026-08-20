@@ -100,7 +100,8 @@ def _provision_os_user(user: dict[str, Any]) -> None:
     uid = int(user["uid"])
     tenant_root = USERS_ROOT / str(user["username"])
     home = tenant_root / "home"
-    workspace = tenant_root / "workspace"
+    workspace = home / "workspace"
+    state = tenant_root / "state"
 
     try:
         existing = pwd.getpwnam(username)
@@ -124,7 +125,10 @@ def _provision_os_user(user: dict[str, Any]) -> None:
     tenant_root.mkdir(parents=True, exist_ok=True)
     home.mkdir(parents=True, exist_ok=True)
     workspace.mkdir(parents=True, exist_ok=True)
-    for directory in (tenant_root, home, workspace):
+    state.mkdir(parents=True, exist_ok=True)
+    os.chown(tenant_root, 0, 0)
+    os.chmod(tenant_root, 0o711)
+    for directory in (home, workspace, state):
         os.chown(directory, uid, group_id)
         os.chmod(directory, 0o700)
 
@@ -199,7 +203,8 @@ class TenantManager:
         port = int(user["port"])
         tenant_root = USERS_ROOT / username
         home = tenant_root / "home"
-        workspace = tenant_root / "workspace"
+        workspace = home / "workspace"
+        state = tenant_root / "state"
         delay = 1
 
         while not self.stopping:
@@ -208,7 +213,7 @@ class TenantManager:
                 "runuser", "-u", os_user, "--",
                 "env", "-i",
                 f"HOME={home}",
-                f"DSH_HOME={home}",
+                f"DSH_HOME={state}",
                 "PATH=/usr/local/bin:/usr/bin:/bin",
                 "/usr/local/bin/node",
                 HARNESS_CLI,

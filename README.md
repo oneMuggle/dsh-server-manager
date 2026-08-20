@@ -65,8 +65,9 @@ http://<服务器局域网 IP>:3080/
 data/
 ├── gateway/              # 用户注册表与会话签名密钥
 └── users/<username>/
-    ├── home/             # DSH_HOME
-    └── workspace/        # 用户工作区
+    ├── home/             # 用户在界面中看到的 HOME
+    │   └── workspace/    # 默认工作区
+    └── state/            # DSH_HOME：设置、凭据、profiles、sessions
 ```
 
 ## 注册和登录 API
