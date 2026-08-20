@@ -41,9 +41,13 @@ git submodule update --init --recursive
 构建并启动：
 
 ```sh
+cp .env.example .env
+# 编辑 .env，为 DSH_ADMIN_PASSWORD 设置至少 8 个字符的强密码
 docker compose -f compose.yml up -d --build
 docker compose -f compose.yml logs -f
 ```
+
+容器启动时会检查固定管理员账号 `admin`。如果该账号不存在，容器使用 `DSH_ADMIN_PASSWORD` 自动创建；变量缺失或长度不在 8–256 个字符之间时，容器拒绝启动。账号创建后修改环境变量不会自动重置已有密码。
 
 查看服务器局域网地址：
 
@@ -59,7 +63,7 @@ http://<服务器局域网 IP>:3080/
 
 没有有效登录信息时，主入口会自动跳转登录页；可以从登录页的“注册新账号”按钮进入注册页。注册或登录成功后会进入该用户的 DSH 主界面。模型提供商和 API Key 在 DSH 的“设置 → 模型”中由每个用户分别配置。
 
-空数据目录中的首个注册账号会自动成为管理员，后续注册账号为普通用户。管理员的 DSH 主界面会显示“管理后台”入口。
+`admin` 是唯一固定管理员，其他注册账号均为普通用户。管理员的 DSH 主界面会显示“管理后台”入口。
 
 宿主机只挂载 `data/` 一个目录，内部布局如下：
 
@@ -99,7 +103,7 @@ curl -X POST -b cookies.txt http://127.0.0.1:3080/api/gateway/v1/auth/logout
 
 ## 管理后台与 Swagger
 
-管理员访问 `/admin` 可以查看已注册用户的用户名、角色、状态和注册时间。用户列表接口为 `GET /api/gateway/v1/admin/users`，未登录请求返回 401，普通用户请求返回 403；接口不会返回密码记录、Linux UID、租户端口或用户配置。
+固定账号 `admin` 访问 `/admin` 可以查看已注册用户的用户名、角色、状态和注册时间。用户列表接口为 `GET /api/gateway/v1/admin/users`，未登录请求返回 401，普通用户请求返回 403；接口不会返回密码记录、Linux UID、租户端口或用户配置。
 
 Swagger UI 位于 `/docs`，OpenAPI 文档位于 `/openapi.json`。在同一浏览器登录后打开 Swagger，可以使用当前登录 Cookie 调试受保护接口。
 

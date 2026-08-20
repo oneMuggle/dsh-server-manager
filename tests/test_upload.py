@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import os
 import unittest
+from unittest.mock import patch
 
 from supervisor.main import (
+    _admin_password_from_environment,
     _normalize_user_roles,
     _upload_directory_parts,
     _valid_password_record,
@@ -43,18 +46,35 @@ class SupervisorRegressionTests(unittest.TestCase):
             )
         )
 
-    def test_missing_roles_promote_oldest_user_to_admin(self) -> None:
+    def test_only_fixed_admin_username_has_admin_role(self) -> None:
         registry = {
             "version": 1,
             "users": {
-                "later": {"created_at": "2026-02-01T00:00:00+00:00"},
-                "first": {"created_at": "2026-01-01T00:00:00+00:00"},
+                "first": {"role": "admin"},
+                "admin": {"role": "user"},
             },
         }
         self.assertTrue(_normalize_user_roles(registry))
-        self.assertEqual(registry["users"]["first"]["role"], "admin")
-        self.assertEqual(registry["users"]["later"]["role"], "user")
+        self.assertEqual(registry["users"]["admin"]["role"], "admin")
+        self.assertEqual(registry["users"]["first"]["role"], "user")
         self.assertFalse(_normalize_user_roles(registry))
+
+    def test_bootstrap_admin_password_is_required_and_validated(self) -> None:
+        with patch.dict(os.environ, {}, clear=True):
+            with self.assertRaises(RuntimeError):
+                _admin_password_from_environment()
+        with patch.dict(os.environ, {"DSH_ADMIN_PASSWORD": "short"}, clear=True):
+            with self.assertRaises(RuntimeError):
+                _admin_password_from_environment()
+        with patch.dict(
+            os.environ,
+            {"DSH_ADMIN_PASSWORD": "strong-test-password"},
+            clear=True,
+        ):
+            self.assertEqual(
+                _admin_password_from_environment(),
+                "strong-test-password",
+            )
 
 
 if __name__ == "__main__":

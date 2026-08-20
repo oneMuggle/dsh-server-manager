@@ -18,6 +18,8 @@ from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+from gateway.auth import hash_password
+
 from .firewall import FirewallError, TenantNetwork, apply_firewall
 
 logging.basicConfig(
@@ -42,6 +44,8 @@ USERNAME_PATTERN = re.compile(r"^[a-z][a-z0-9_-]{2,23}$")
 HARNESS_CLI = "/opt/deepseek-harness/apps/cli/lib/bin.js"
 UPLOAD_SPOOL_PATTERN = re.compile(r"^[0-9a-f]{32}\.upload$")
 MAX_UPLOAD_BYTES = 100 * 1024 * 1024
+ADMIN_USERNAME = "admin"
+ADMIN_PASSWORD_ENV = "DSH_ADMIN_PASSWORD"
 
 
 def _atomic_json_write(path: Path, value: dict[str, Any]) -> None:
@@ -77,26 +81,48 @@ def _load_registry() -> dict[str, Any]:
 def _normalize_user_roles(registry: dict[str, Any]) -> bool:
     users = registry["users"]
     changed = False
-    valid_admins = [
-        username
-        for username, user in users.items()
-        if isinstance(user, dict) and user.get("role") == "admin"
-    ]
-    first_username = None
-    if users and not valid_admins:
-        first_username = min(
-            users,
-            key=lambda username: (
-                str(users[username].get("created_at", "")),
-                username,
-            ),
-        )
     for username, user in users.items():
-        expected = "admin" if username == first_username else "user"
-        if user.get("role") not in {"admin", "user"}:
+        if not isinstance(user, dict):
+            raise RuntimeError("invalid user registry entry")
+        expected = "admin" if username == ADMIN_USERNAME else "user"
+        if user.get("role") != expected:
             user["role"] = expected
             changed = True
     return changed
+
+
+def _admin_password_from_environment() -> str:
+    password = os.environ.get(ADMIN_PASSWORD_ENV)
+    if password is None:
+        raise RuntimeError(
+            f"{ADMIN_PASSWORD_ENV} is required when the admin account does not exist"
+        )
+    if not 8 <= len(password) <= 256:
+        raise RuntimeError(f"{ADMIN_PASSWORD_ENV} must contain 8 to 256 characters")
+    return password
+
+
+def _new_user_record(
+    registry: dict[str, Any],
+    username: str,
+    password: dict[str, Any],
+) -> dict[str, Any]:
+    used_uids = {entry.pw_uid for entry in pwd.getpwall()}
+    used_uids.update(int(user["uid"]) for user in registry["users"].values())
+    used_ports = {int(user["port"]) for user in registry["users"].values()}
+    uid = next(value for value in range(FIRST_UID, 60000) if value not in used_uids)
+    port = next(value for value in range(FIRST_PORT, 65536) if value not in used_ports)
+    return {
+        "username": username,
+        "os_user": f"dsh-{username}",
+        "uid": uid,
+        "port": port,
+        "role": "admin" if username == ADMIN_USERNAME else "user",
+        "password": password,
+        "password_version": 1,
+        "created_at": datetime.now(UTC).isoformat(),
+        "disabled": False,
+    }
 
 
 def _ensure_gateway_state() -> None:
@@ -480,22 +506,7 @@ class Supervisor:
             registry = _load_registry()
             if username in registry["users"]:
                 raise FileExistsError("username already exists")
-            used_uids = {entry.pw_uid for entry in pwd.getpwall()}
-            used_uids.update(int(user["uid"]) for user in registry["users"].values())
-            used_ports = {int(user["port"]) for user in registry["users"].values()}
-            uid = next(value for value in range(FIRST_UID, 60000) if value not in used_uids)
-            port = next(value for value in range(FIRST_PORT, 65536) if value not in used_ports)
-            user = {
-                "username": username,
-                "os_user": f"dsh-{username}",
-                "uid": uid,
-                "port": port,
-                "role": "admin" if not registry["users"] else "user",
-                "password": password,
-                "password_version": 1,
-                "created_at": datetime.now(UTC).isoformat(),
-                "disabled": False,
-            }
+            user = _new_user_record(registry, username, password)
             _provision_os_user(user)
             candidate = {"version": 1, "users": {**registry["users"], username: user}}
             apply_firewall(_network_rules(candidate), gateway_port=GATEWAY_PORT)
@@ -604,11 +615,22 @@ class Supervisor:
     async def start(self) -> None:
         _ensure_gateway_state()
         registry = _load_registry()
-        if _normalize_user_roles(registry):
-            _atomic_json_write(REGISTRY_PATH, registry)
+        registry_changed = _normalize_user_roles(registry)
+        if ADMIN_USERNAME not in registry["users"]:
+            password = _admin_password_from_environment()
+            password_record = hash_password(password)
+            admin = _new_user_record(registry, ADMIN_USERNAME, password_record)
+            registry = {
+                "version": 1,
+                "users": {**registry["users"], ADMIN_USERNAME: admin},
+            }
+            registry_changed = True
+            LOGGER.info("created bootstrap administrator account %s", ADMIN_USERNAME)
         for user in registry["users"].values():
             _provision_os_user(user)
         apply_firewall(_network_rules(registry), gateway_port=GATEWAY_PORT)
+        if registry_changed:
+            _atomic_json_write(REGISTRY_PATH, registry)
 
         RUNTIME_ROOT.mkdir(parents=True, exist_ok=True)
         gateway_account = pwd.getpwnam(GATEWAY_USER)
@@ -625,10 +647,11 @@ class Supervisor:
 
         self.gateway = await asyncio.create_subprocess_exec(
             "runuser", "-u", GATEWAY_USER, "--",
-            "env",
+            "env", "-i",
             "PYTHONPATH=/opt/dsh-lan-deployment",
             f"DSH_STATE_ROOT={STATE_ROOT}",
             f"DSH_CONTROL_SOCKET={CONTROL_SOCKET}",
+            "PATH=/usr/local/bin:/usr/bin:/bin",
             "/opt/venv/bin/python",
             "-m", "uvicorn",
             "gateway.main:app",
@@ -689,6 +712,9 @@ async def main() -> int:
         return 0
     except FirewallError:
         LOGGER.exception("tenant network isolation is unavailable")
+        return 1
+    except RuntimeError as error:
+        LOGGER.error("startup failed: %s", error)
         return 1
     finally:
         await supervisor.stop()
