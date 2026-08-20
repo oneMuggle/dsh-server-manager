@@ -4,4 +4,5 @@ deepseek-harness/node_modules
 deepseek-harness/coverage
 deepseek-harness/.artifacts
 data
-workspace
+**/__pycache__
+**/*.pyc

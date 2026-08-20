@@ -1,16 +1,22 @@
 # DSH LAN Deployment
 
-使用一个 Docker 容器从官方 DeepSeek Harness 源码构建 Web 服务，并通过同容器内的 Nginx 暴露局域网访问地址。
+使用一个 Docker 容器从官方 DeepSeek Harness 源码构建多用户 Web 服务。Python 网关提供注册和登录，并把每个已认证用户转发到独立的 DSH 进程。
 
 ## 架构
 
 ```text
-浏览器 -> http://<局域网 IP>:3080 -> Nginx :8080 -> DSH 127.0.0.1:3080
+浏览器 -> http://<局域网 IP>:3080 -> FastAPI :8080 -> 用户专属 DSH 127.0.0.1:31xx
 ```
 
-DSH 保持官方默认回环监听。Nginx 将请求的 Host 改写为回环地址，不修改 Harness 源码，也不使用 `--host` 或 `--trusted-host`。
+DSH 保持官方默认回环监听。FastAPI 接收请求，aiohttp 负责 HTTP/WebSocket 转发，并把 Host 改写为对应的回环地址。不修改 Harness 源码，也不使用 `--host` 或 `--trusted-host`。
 
-代理会对返回流量做两处局域网兼容处理：
+每个注册账号拥有：
+
+- 独立 Linux 用户和 DSH 进程；
+- 独立的 Harness home、模型设置、插件配置和 workspace；
+- 由签名 HttpOnly Cookie 绑定的网关会话。
+
+容器内的 OUTPUT 防火墙阻止租户访问其他租户的 DSH 端口或网关端口。代理继续对返回流量做两处局域网兼容处理：
 
 - 为普通 HTTP 页面补充官方前端依赖的 `crypto.randomUUID()`；
 - 将官方连接模块的浏览器回环判定改为真，使模型设置和插件配置使用宿主持久化设置。
@@ -32,12 +38,6 @@ git submodule update --init --recursive
 
 ## 启动
 
-如需调用 DeepSeek 模型，先在当前 shell 设置官方环境变量：
-
-```sh
-export DEEPSEEK_API_KEY='<your-key>'
-```
-
 构建并启动：
 
 ```sh
@@ -54,10 +54,45 @@ hostname -I
 在同一局域网设备的浏览器打开：
 
 ```text
-http://<服务器局域网 IP>:3080
+http://<服务器局域网 IP>:3080/register
 ```
 
-DSH 状态持久化在 `data/`，默认工作区是 `workspace/`。
+注册后会自动登录并进入该用户的 DSH。模型提供商和 API Key 在 DSH 的“设置 → 模型”中由每个用户分别配置。
+
+宿主机只挂载 `data/` 一个目录，内部布局如下：
+
+```text
+data/
+├── gateway/              # 用户注册表与会话签名密钥
+└── users/<username>/
+    ├── home/             # DSH_HOME
+    └── workspace/        # 用户工作区
+```
+
+## 注册和登录 API
+
+注册：
+
+```sh
+curl -i -c cookies.txt \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"alice","password":"change-me-123"}' \
+  http://127.0.0.1:3080/api/gateway/v1/auth/register
+```
+
+登录、查询当前账号和退出：
+
+```sh
+curl -i -c cookies.txt \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"alice","password":"change-me-123"}' \
+  http://127.0.0.1:3080/api/gateway/v1/auth/login
+
+curl -b cookies.txt http://127.0.0.1:3080/api/gateway/v1/auth/me
+curl -X POST -b cookies.txt http://127.0.0.1:3080/api/gateway/v1/auth/logout
+```
+
+用户名长度为 3–24，只能使用小写字母、数字、下划线和连字符，且必须以字母开头；密码至少 8 个字符。
 
 ## 停止
 
@@ -67,4 +102,4 @@ docker compose -f compose.yml down
 
 ## 安全限制
 
-该版本没有认证和 TLS，会把代理请求和浏览器能力都呈现为本机回环访问。局域网客户端能够读取或修改 Harness 设置、凭据和插件配置，并能使用宿主能力。只应在可信局域网中供单个用户使用，不要把端口 `3080` 直接暴露到公网。
+当前版本面向可信局域网：已有账号之间相互隔离，但注册接口默认开放，且普通 HTTP 没有 TLS。不要把端口 `3080` 直接暴露到公网；公网部署前还需要 HTTPS、注册策略、CSRF/限流强化和管理接口。

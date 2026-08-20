@@ -8,10 +8,9 @@ services:
       dockerfile: docker/Dockerfile
     ports:
       - "3080:8080"
-    environment:
-      - DEEPSEEK_API_KEY
+    cap_add:
+      - NET_ADMIN
     volumes:
       - ./data:/var/lib/dsh
-      - ./workspace:/workspace
     restart: unless-stopped
     stop_grace_period: 15s

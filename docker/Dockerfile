@@ -19,27 +19,42 @@ FROM node:24-bookworm-slim AS runtime
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update \
-    && apt-get install --no-install-recommends -y nginx tini \
+    && apt-get install --no-install-recommends -y \
+      iptables \
+      passwd \
+      python3 \
+      python3-venv \
+      tini \
+      util-linux \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /opt/deepseek-harness /opt/deepseek-harness
-COPY docker/nginx.conf /etc/nginx/nginx.conf
-COPY docker/entrypoint.mjs /usr/local/lib/dsh-lan-entrypoint.mjs
-COPY docker/compat.js /usr/local/share/dsh-lan/compat.js
+COPY requirements.txt /opt/dsh-lan-deployment/requirements.txt
+
+RUN python3 -m venv /opt/venv \
+    && /opt/venv/bin/pip install --no-cache-dir -r /opt/dsh-lan-deployment/requirements.txt \
+    && groupadd --gid 19999 dsh-gateway \
+    && useradd \
+      --uid 19999 \
+      --gid dsh-gateway \
+      --home-dir /nonexistent \
+      --no-create-home \
+      --shell /usr/sbin/nologin \
+      dsh-gateway
+
+COPY gateway /opt/dsh-lan-deployment/gateway
+COPY supervisor /opt/dsh-lan-deployment/supervisor
 
 RUN mkdir -p \
-      /tmp/nginx/client-body \
-      /tmp/nginx/proxy \
       /var/lib/dsh \
-      /workspace \
-    && nginx -t -c /etc/nginx/nginx.conf \
-    && rm -f /tmp/nginx/nginx.pid \
-    && chown -R node:node /tmp/nginx /var/lib/dsh /workspace
+      /run/dsh \
+    && chmod 755 /opt/dsh-lan-deployment \
+    && find /opt/dsh-lan-deployment -type d -exec chmod 755 {} + \
+    && find /opt/dsh-lan-deployment -type f -exec chmod 644 {} +
 
-ENV DSH_HOME=/var/lib/dsh
-WORKDIR /workspace
-USER node
+ENV PYTHONPATH=/opt/dsh-lan-deployment
+WORKDIR /opt/dsh-lan-deployment
 
 EXPOSE 8080
 
-ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/node", "/usr/local/lib/dsh-lan-entrypoint.mjs"]
+ENTRYPOINT ["/usr/bin/tini", "--", "/opt/venv/bin/python", "-m", "supervisor.main"]

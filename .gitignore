@@ -2,6 +2,5 @@
 
 data/*
 !data/.gitkeep
-
-workspace/*
-!workspace/.gitkeep
+__pycache__/
+*.pyc
