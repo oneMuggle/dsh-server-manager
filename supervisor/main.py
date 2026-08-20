@@ -9,6 +9,7 @@ import re
 import secrets
 import signal
 import socket
+import stat
 import struct
 import subprocess
 import tempfile
@@ -72,14 +73,16 @@ def _load_registry() -> dict[str, Any]:
 def _ensure_gateway_state() -> None:
     gateway = pwd.getpwnam(GATEWAY_USER)
     STATE_ROOT.mkdir(parents=True, exist_ok=True)
-    os.chown(STATE_ROOT, 0, 0)
-    os.chmod(STATE_ROOT, 0o711)
+    # A bind-mounted host directory belongs to the host user. Preserve that
+    # ownership and its existing read bits; the gateway only needs traversal.
+    state_mode = stat.S_IMODE(STATE_ROOT.stat().st_mode)
+    os.chmod(STATE_ROOT, state_mode | stat.S_IXOTH)
     GATEWAY_ROOT.mkdir(parents=True, exist_ok=True)
     os.chown(GATEWAY_ROOT, 0, gateway.pw_gid)
     os.chmod(GATEWAY_ROOT, 0o750)
     USERS_ROOT.mkdir(parents=True, exist_ok=True)
     os.chown(USERS_ROOT, 0, 0)
-    os.chmod(USERS_ROOT, 0o711)
+    os.chmod(USERS_ROOT, 0o755)
 
     if not REGISTRY_PATH.exists():
         _atomic_json_write(REGISTRY_PATH, {"version": 1, "users": {}})
