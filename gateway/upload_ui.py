@@ -4,57 +4,108 @@ UPLOAD_WIDGET = """
 <style>
   #dshgw-upload-button {
     position: fixed; right: 24px; bottom: 24px; z-index: 2147483000;
-    border: 0; border-radius: 999px; padding: 12px 18px;
-    color: #fff; background: #315efb; box-shadow: 0 8px 28px #0005;
-    font: 600 14px/1 system-ui, sans-serif; cursor: pointer;
+    min-height: 36px; border: 0; border-radius: 18px; padding: 7px 16px;
+    color: var(--dsw-alias-label-primary-foreground, #fff);
+    background: var(--dsw-alias-button-primary-fill, #0f1115);
+    box-shadow: var(--dsw-shadow-lv2, 0 8px 28px rgba(0, 0, 0, .18));
+    font-family: inherit; font-size: 14px; line-height: 22px; font-weight: 500; cursor: pointer;
+  }
+  #dshgw-upload-button:hover { background: var(--dsw-alias-button-primary-hover, #43454a); }
+  #dshgw-upload-button:focus-visible,
+  #dshgw-upload-panel button:focus-visible,
+  #dshgw-upload-panel input:focus-visible {
+    outline: 2px solid var(--dsw-alias-brand-primary-new-colorprimary-new-color, #4176e6);
+    outline-offset: 2px;
   }
   #dshgw-upload-overlay {
     display: none; position: fixed; inset: 0; z-index: 2147483001;
-    place-items: center; padding: 24px; background: #0009;
-    font-family: system-ui, sans-serif;
+    place-items: center; padding: 24px;
+    color: var(--dsw-alias-label-primary, #0f1115);
+    background: var(--dsw-alias-bg-mask-1, rgba(0, 0, 0, .24));
+    backdrop-filter: var(--dsw-mask-blur, blur(2px));
+    font-family: inherit;
   }
   #dshgw-upload-overlay.open { display: grid; }
   #dshgw-upload-panel {
     box-sizing: border-box; width: min(680px, 100%); max-height: min(82vh, 760px); padding: 24px;
-    border: 1px solid #3d4659; border-radius: 16px; color: #f5f7fb;
-    background: #181d27; box-shadow: 0 24px 80px #0008; overflow: auto;
+    border: 1px solid var(--dsw-alias-border-inverted, transparent); border-radius: 24px;
+    color: var(--dsw-alias-label-primary, #0f1115);
+    background: var(--dsw-alias-bg-layer-2, #fff);
+    box-shadow: var(--dsw-shadow-lv3, 0 24px 80px rgba(0, 0, 0, .24)); overflow: auto;
   }
   #dshgw-upload-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
-  #dshgw-upload-panel h2 { margin: 0; font-size: 20px; }
-  #dshgw-upload-panel .subtitle { margin: 7px 0 18px; color: #aeb9d2; font-size: 13px; }
-  #dshgw-upload-x { border: 0; padding: 4px 8px; color: #aeb9d2; background: transparent; font-size: 24px; cursor: pointer; }
-  #dshgw-upload-panel label { display: grid; gap: 8px; margin: 14px 0; font-size: 14px; }
-  #dshgw-upload-panel input {
-    box-sizing: border-box; width: 100%; padding: 11px; border: 1px solid #465066;
-    border-radius: 8px; color: inherit; background: #10131a; font: inherit;
+  #dshgw-upload-panel h2 { margin: 0; color: var(--dsw-alias-label-primary, #0f1115); font-size: 16px; line-height: 24px; font-weight: 500; }
+  #dshgw-upload-panel .subtitle { margin: 6px 0 18px; color: var(--dsw-alias-label-secondary, #61666b); font-size: 14px; line-height: 22px; }
+  #dshgw-upload-x {
+    display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px;
+    border: 0; border-radius: 8px; padding: 0; color: var(--dsw-alias-label-secondary, #61666b);
+    background: transparent; font-family: inherit; font-size: 22px; line-height: 1; font-weight: 400; cursor: pointer;
   }
+  #dshgw-upload-x:hover { background: var(--dsw-alias-interactive-bg-hover, rgba(38, 49, 72, .06)); }
+  #dshgw-upload-panel label { display: grid; gap: 8px; margin: 14px 0; color: var(--dsw-alias-label-primary, #0f1115); font-size: 14px; line-height: 22px; }
+  #dshgw-upload-panel input {
+    box-sizing: border-box; width: 100%; min-height: 40px; padding: 7px 8px;
+    border: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, .1)); border-radius: 8px;
+    color: var(--dsw-alias-label-primary, #0f1115);
+    background: var(--dsw-alias-bg-layer-1, #fff); font: inherit;
+  }
+  #dshgw-upload-panel input:hover { border-color: var(--dsw-alias-border-l3, rgba(0, 0, 0, .12)); }
+  #dshgw-upload-panel input::file-selector-button {
+    min-height: 28px; margin-right: 10px; padding: 3px 12px;
+    border: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, .1)); border-radius: 14px;
+    color: var(--dsw-alias-label-primary, #0f1115); background: transparent;
+    font: inherit; cursor: pointer;
+  }
+  #dshgw-upload-panel input::file-selector-button:hover { background: var(--dsw-alias-interactive-bg-hover, rgba(38, 49, 72, .06)); }
   #dshgw-upload-crumbs {
     display: flex; align-items: center; gap: 4px; min-height: 42px; padding: 8px 10px;
-    border: 1px solid #3d4659; border-radius: 10px; overflow-x: auto; white-space: nowrap;
-    background: #10131a;
+    border: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, .1)); border-radius: 10px;
+    overflow-x: auto; white-space: nowrap; background: var(--dsw-alias-bg-layer-1, #fff);
+    scrollbar-color: var(--dsw-alias-scrollbar-bg-l1, #e5e5e5) transparent;
   }
-  #dshgw-upload-crumbs button { border: 0; padding: 5px 7px; color: #8eb0ff; background: transparent; font: inherit; cursor: pointer; }
-  #dshgw-upload-crumbs span { color: #5f6a80; }
+  #dshgw-upload-crumbs button {
+    border: 0; border-radius: 8px; padding: 5px 7px;
+    color: var(--dsw-alias-label-primary, #0f1115); background: transparent;
+    font: inherit; cursor: pointer;
+  }
+  #dshgw-upload-crumbs button:hover { background: var(--dsw-alias-interactive-bg-hover, rgba(38, 49, 72, .06)); }
+  #dshgw-upload-crumbs span { color: var(--dsw-alias-label-dimmed, #e1e5ee); }
   #dshgw-upload-directories {
-    min-height: 150px; max-height: 300px; margin-top: 10px; border: 1px solid #3d4659;
-    border-radius: 10px; overflow-y: auto; background: #10131a;
+    min-height: 150px; max-height: 300px; margin-top: 10px;
+    border: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, .1)); border-radius: 10px;
+    overflow-y: auto; background: var(--dsw-alias-bg-layer-1, #fff);
+    scrollbar-color: var(--dsw-alias-scrollbar-bg-l1, #e5e5e5) transparent;
   }
   .dshgw-upload-folder {
     display: flex; width: 100%; gap: 10px; padding: 12px 14px; border: 0;
-    border-bottom: 1px solid #272e3b; color: #eef2ff; background: transparent;
+    border-bottom: 1px solid var(--dsw-alias-border-l1, rgba(0, 0, 0, .04));
+    color: var(--dsw-alias-label-primary, #0f1115); background: transparent;
     font: inherit; text-align: left; cursor: pointer;
   }
   .dshgw-upload-folder:last-child { border-bottom: 0; }
-  .dshgw-upload-folder:hover { background: #202735; }
-  .dshgw-upload-empty { margin: 0; padding: 28px 16px; color: #8893aa; text-align: center; }
-  #dshgw-upload-target { margin: 12px 2px 0; color: #b9c8f6; font-size: 13px; }
+  .dshgw-upload-folder:hover { background: var(--dsw-alias-interactive-bg-hover, rgba(38, 49, 72, .06)); }
+  .dshgw-upload-folder:active { background: var(--dsw-alias-interactive-bg-active, rgba(38, 49, 72, .1)); }
+  .dshgw-upload-empty { margin: 0; padding: 28px 16px; color: var(--dsw-alias-label-tertiary, #81858c); text-align: center; }
+  #dshgw-upload-target { margin: 12px 2px 0; color: var(--dsw-alias-label-secondary, #61666b); font-size: 13px; line-height: 20px; }
   #dshgw-upload-actions { display: flex; gap: 10px; margin-top: 18px; }
   #dshgw-upload-actions button {
-    flex: 1; padding: 11px; border: 1px solid #465066; border-radius: 8px;
-    color: inherit; background: transparent; font: inherit; cursor: pointer;
+    flex: 1; min-height: 36px; padding: 7px 14px;
+    border: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, .1)); border-radius: 18px;
+    color: var(--dsw-alias-label-primary, #0f1115); background: transparent;
+    font-family: inherit; font-size: 14px; line-height: 22px; font-weight: 400; cursor: pointer;
   }
-  #dshgw-upload-actions button.primary { border-color: #315efb; background: #315efb; color: white; }
-  #dshgw-upload-status { min-height: 20px; margin: 14px 0 0; color: #b9c8f6; font-size: 13px; white-space: pre-wrap; }
+  #dshgw-upload-actions button:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover, rgba(38, 49, 72, .06)); }
+  #dshgw-upload-actions button.primary {
+    border-color: transparent; color: var(--dsw-alias-label-primary-foreground, #fff);
+    background: var(--dsw-alias-button-primary-fill, #0f1115);
+  }
+  #dshgw-upload-actions button.primary:hover:not(:disabled) { background: var(--dsw-alias-button-primary-hover, #43454a); }
+  #dshgw-upload-actions button:disabled { cursor: not-allowed; opacity: .4; }
+  #dshgw-upload-status {
+    min-height: 20px; margin: 14px 0 0;
+    color: var(--dsw-alias-label-secondary, #61666b);
+    font-size: 13px; line-height: 20px; white-space: pre-wrap;
+  }
 </style>
 <button id="dshgw-upload-button" type="button">上传文件</button>
 <div id="dshgw-upload-overlay" role="dialog" aria-modal="true" aria-labelledby="dshgw-upload-title">
