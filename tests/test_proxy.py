@@ -58,6 +58,22 @@ class ManagementPageTests(unittest.TestCase):
         self.assertIn("/docs", paths)
         self.assertIn("/openapi.json", paths)
 
+    def test_custom_provider_api_is_described_with_ui_field_names(self) -> None:
+        schema = app.openapi()
+        path = "/api/gateway/v1/admin/users/{username}/providers"
+        operation = schema["paths"][path]["post"]
+        request_schema = operation["requestBody"]["content"]["application/json"]["schema"]
+        component_name = request_schema["$ref"].rsplit("/", 1)[-1]
+        properties = schema["components"]["schemas"][component_name]["properties"]
+        self.assertEqual(
+            set(properties),
+            {"providerId", "displayName", "baseURL", "api", "apiKey", "models"},
+        )
+        self.assertEqual(
+            properties["api"]["enum"],
+            ["openai-completions", "openai-responses", "anthropic-messages"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

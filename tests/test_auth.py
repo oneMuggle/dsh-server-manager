@@ -27,8 +27,8 @@ class SessionTests(unittest.TestCase):
             {"exp": parse_session(token, secret)["exp"], "pv": 3, "sub": "alice"},
         )
         encoded, signature = token.split(".")
-        replacement = "A" if signature[-1] != "A" else "B"
-        self.assertIsNone(parse_session(f"{encoded}.{signature[:-1]}{replacement}", secret))
+        replacement = "A" if signature[0] != "A" else "B"
+        self.assertIsNone(parse_session(f"{encoded}.{replacement}{signature[1:]}", secret))
 
 
 class LimiterTests(unittest.TestCase):
