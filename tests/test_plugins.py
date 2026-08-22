@@ -17,12 +17,8 @@ from common.storage.assignments import (
 from common.storage.plugin_catalog import list_plugins, register_plugin_version
 from common.storage.plugin_jobs import create_job, get_job
 from common.storage.users import add_user, initialize_registry, replace_registry
-from supervisor.plugins import (
-    PluginOperationError,
-    SharedPluginManager,
-    validate_package_name,
-    validate_requested_version,
-)
+from supervisor.plugins.manager import PluginOperationError, SharedPluginManager
+from supervisor.plugins.registry import validate_package_name, validate_requested_version
 
 
 def user(username: str, uid: int, port: int) -> dict:

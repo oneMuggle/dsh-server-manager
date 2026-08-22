@@ -5,7 +5,6 @@ import hashlib
 import json
 import os
 import pwd
-import re
 import secrets
 import shutil
 import signal
@@ -13,6 +12,9 @@ import stat
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 from urllib.parse import urlsplit
+
+from .installer import MAX_PROCESS_OUTPUT, bounded_output
+from .registry import validate_package_name, validate_requested_version
 
 from common.storage.assignments import (
     enabled_aliases,
@@ -32,43 +34,14 @@ from common.storage.plugin_jobs import get_job, set_job_item_status, set_job_sta
 from common.storage.users import get_user
 
 
-PACKAGE_PATTERN = re.compile(
-    r"^(?:@[a-z0-9][a-z0-9._-]*/)?[a-z0-9][a-z0-9._-]*$"
-)
-VERSION_PATTERN = re.compile(r"^[0-9A-Za-z][0-9A-Za-z._+-]{0,63}$")
 MANAGED_SCOPE = "@dsh-managed"
 INSTALLER_USER = "dsh-plugin-installer"
-MAX_PROCESS_OUTPUT = 32 * 1024
 MAX_REGISTRY_METADATA_OUTPUT = 1024 * 1024
 MAX_DISCOVERED_VERSIONS = 10000
 
 
 class PluginOperationError(RuntimeError):
     pass
-
-
-def validate_package_name(value: str) -> str:
-    if len(value) > 214 or not PACKAGE_PATTERN.fullmatch(value):
-        raise ValueError("无效的 npm 插件名称")
-    return value
-
-
-def validate_requested_version(value: str) -> str:
-    if not VERSION_PATTERN.fullmatch(value):
-        raise ValueError("无效的插件版本或 dist-tag")
-    return value
-
-
-def _bounded_output(
-    stdout: bytes, stderr: bytes, limit: int = MAX_PROCESS_OUTPUT
-) -> str:
-    combined = stdout + (b"\n" if stdout and stderr else b"") + stderr
-    if len(combined) > limit:
-        combined = combined[-limit:]
-        prefix = "…输出过长，仅保留末尾内容…\n"
-    else:
-        prefix = ""
-    return prefix + combined.decode("utf-8", errors="replace").strip()
 
 
 class SharedPluginManager:
@@ -235,9 +208,9 @@ class SharedPluginManager:
                 raise
             raise PluginOperationError("插件命令执行超时") from error
         if process.returncode != 0:
-            output = _bounded_output(stdout, stderr)
+            output = bounded_output(stdout, stderr)
             raise PluginOperationError(output or f"插件命令退出码 {process.returncode}")
-        return _bounded_output(stdout, b"", max_success_output)
+        return bounded_output(stdout, b"", max_success_output)
 
     def _prepare_staging(self, job_id: str) -> Path:
         path = self.staging / job_id
