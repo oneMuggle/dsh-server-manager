@@ -7,15 +7,15 @@ import signal
 from .config import SupervisorConfig
 
 
-async def start_gateway(config: SupervisorConfig) -> asyncio.subprocess.Process:
-    return await asyncio.create_subprocess_exec(
+def gateway_command(config: SupervisorConfig) -> tuple[str, ...]:
+    return (
         "runuser",
         "-u",
         config.gateway_user,
         "--",
         "env",
         "-i",
-        "PYTHONPATH=/opt/dsh-lan-deployment",
+        f"PYTHONPATH={config.install_root}",
         f"DSH_STATE_ROOT={config.state_root}",
         f"DSH_CONTROL_SOCKET={config.control_socket}",
         "PATH=/usr/local/bin:/usr/bin:/bin",
@@ -30,7 +30,13 @@ async def start_gateway(config: SupervisorConfig) -> asyncio.subprocess.Process:
         "--workers",
         "1",
         "--no-access-log",
-        cwd="/opt/dsh-lan-deployment",
+    )
+
+
+async def start_gateway(config: SupervisorConfig) -> asyncio.subprocess.Process:
+    return await asyncio.create_subprocess_exec(
+        *gateway_command(config),
+        cwd=str(config.install_root),
         start_new_session=True,
     )
 

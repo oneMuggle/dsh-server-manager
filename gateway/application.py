@@ -42,9 +42,9 @@ async def health() -> dict[str, bool]:
 
 def create_app() -> FastAPI:
     application = FastAPI(
-        title="DSH LAN Gateway",
+        title="DSM · DSH Server Manager",
         description=(
-            "DeepSeek Harness 多用户局域网网关。受保护接口支持登录后生成的 "
+            "DeepSeek Harness 多用户服务器管理网关。受保护接口支持登录后生成的 "
             "HttpOnly Cookie 或 Bearer Token。"
         ),
         version="0.4.0",

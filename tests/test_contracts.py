@@ -124,6 +124,10 @@ TABLE_COLUMNS = {
 
 
 class OpenApiContractTests(unittest.TestCase):
+    def test_openapi_uses_the_dsm_product_name(self) -> None:
+        schema = create_app().openapi()
+        self.assertEqual(schema["info"]["title"], "DSM · DSH Server Manager")
+
     def test_handlers_using_request_scoped_services_accept_request(self) -> None:
         for handler in (
             registry_plugin_versions,

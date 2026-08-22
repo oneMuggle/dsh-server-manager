@@ -16,6 +16,7 @@ class SupervisorConfig:
     upload_root: Path
     runtime_root: Path
     control_socket: Path
+    install_root: Path
     gateway_user: str
     gateway_port: int
     harness_cli: str
@@ -36,6 +37,7 @@ class SupervisorConfig:
             upload_root=gateway_root / "uploads",
             runtime_root=runtime_root,
             control_socket=runtime_root / "control.sock",
+            install_root=Path("/opt/dsh-server-manager"),
             gateway_user="dsh-gateway",
             gateway_port=8080,
             harness_cli="/opt/deepseek-harness/apps/cli/lib/bin.js",
