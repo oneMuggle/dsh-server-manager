@@ -8,17 +8,20 @@ import pwd
 import secrets
 import shutil
 import signal
-import stat
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 from urllib.parse import urlsplit
 
-from .installer import MAX_PROCESS_OUTPUT, bounded_output
-from .registry import validate_package_name, validate_requested_version
+from .assignments import restore_user_assignment
+from .installer import MAX_PROCESS_OUTPUT, bounded_output, installed_package
+from .profile import apply_profile, sync_package_links
+from .registry import (
+    parse_version_metadata,
+    validate_package_name,
+    validate_requested_version,
+)
 
 from common.storage.assignments import (
-    enabled_aliases,
-    enabled_package_links,
     get_user_plugin,
     mark_user_plugins_ready,
     remove_user_plugin,
@@ -37,7 +40,6 @@ from common.storage.users import get_user
 MANAGED_SCOPE = "@dsh-managed"
 INSTALLER_USER = "dsh-plugin-installer"
 MAX_REGISTRY_METADATA_OUTPUT = 1024 * 1024
-MAX_DISCOVERED_VERSIONS = 10000
 
 
 class PluginOperationError(RuntimeError):
@@ -277,39 +279,11 @@ class SharedPluginManager:
                 metadata = json.loads(output)
             except json.JSONDecodeError as error:
                 raise PluginOperationError("registry 返回了无效的版本元数据") from error
-            if not isinstance(metadata, dict):
-                raise PluginOperationError("registry 未返回插件版本列表")
-            raw_versions = metadata.get("versions")
-            if isinstance(raw_versions, str):
-                raw_versions = [raw_versions]
-            if not isinstance(raw_versions, list) or not raw_versions:
-                raise PluginOperationError("registry 未返回插件版本列表")
-            if len(raw_versions) > MAX_DISCOVERED_VERSIONS:
-                raise PluginOperationError("registry 返回的插件版本数量过多")
-            versions: list[str] = []
-            for value in raw_versions:
-                if not isinstance(value, str):
-                    raise PluginOperationError("registry 返回了无效的插件版本")
-                try:
-                    version = validate_requested_version(value)
-                except ValueError as error:
-                    raise PluginOperationError("registry 返回了无效的插件版本") from error
-                if version not in versions:
-                    versions.append(version)
-            latest_value = metadata.get("version")
-            if not isinstance(latest_value, str):
-                raise PluginOperationError("registry 未返回 latest 版本")
             try:
-                latest = validate_requested_version(latest_value)
+                parsed = parse_version_metadata(metadata)
             except ValueError as error:
-                raise PluginOperationError("registry 返回了无效的 latest 版本") from error
-            if latest not in versions:
-                versions.append(latest)
-            return {
-                "packageName": package_name,
-                "versions": versions,
-                "latest": latest,
-            }
+                raise PluginOperationError(str(error)) from error
+            return {"packageName": package_name, **parsed}
         finally:
             npmrc.unlink(missing_ok=True)
             shutil.rmtree(staging, ignore_errors=True)
@@ -335,36 +309,15 @@ class SharedPluginManager:
         finally:
             npmrc.unlink(missing_ok=True)
 
-    def _installed_package(self, staging: Path, expected_name: str | None) -> tuple[str, str, Path]:
-        project = json.loads((staging / "package.json").read_text(encoding="utf-8"))
-        dependencies = project.get("dependencies")
-        if not isinstance(dependencies, dict) or len(dependencies) != 1:
-            raise PluginOperationError("插件安装结果必须只包含一个直接依赖")
-        package_name = next(iter(dependencies))
-        validate_package_name(package_name)
-        if expected_name is not None and package_name != expected_name:
-            raise PluginOperationError("registry 返回的包名与请求不一致")
-        package_link = staging / "node_modules" / package_name
+    def _installed_package(
+        self,
+        staging: Path,
+        expected_name: str | None,
+    ) -> tuple[str, str, Path]:
         try:
-            package_dir = package_link.resolve(strict=True)
-        except OSError as error:
-            raise PluginOperationError("无法解析已安装插件") from error
-        if not package_dir.is_relative_to(staging.resolve()):
-            raise PluginOperationError("插件解析结果逃逸共享 release 目录")
-        manifest = json.loads((package_dir / "package.json").read_text(encoding="utf-8"))
-        if manifest.get("name") != package_name or not isinstance(manifest.get("version"), str):
-            raise PluginOperationError("插件 package.json 名称或版本无效")
-        try:
-            validate_requested_version(str(manifest["version"]))
-        except ValueError as error:
-            raise PluginOperationError("插件 package.json 版本无效") from error
-        declared = manifest.get("dsh", {}).get("bundle", {}).get("patch")
-        if not isinstance(declared, str) or not declared:
-            raise PluginOperationError("该 npm 包没有声明 dsh.bundle.patch")
-        patch_path = (package_dir / declared).resolve()
-        if not patch_path.is_relative_to(package_dir) or not patch_path.is_file():
-            raise PluginOperationError("插件声明的 Bundle patch 无效")
-        return package_name, str(manifest["version"]), package_link
+            return installed_package(staging, expected_name)
+        except (OSError, ValueError, json.JSONDecodeError) as error:
+            raise PluginOperationError(str(error)) from error
 
     def _publish(
         self,
@@ -569,133 +522,20 @@ class SharedPluginManager:
                         state="ready",
                     )
             except Exception:
-                if previous is None:
-                    remove_user_plugin(self.database_path, username, plugin_id)
-                else:
-                    set_user_plugin(
-                        self.database_path,
-                        username,
-                        plugin_id,
-                        int(previous["plugin_version_id"]),
-                        bool(previous["enabled"]),
-                        state=str(previous["state"]),
-                        error=previous.get("last_error"),
-                    )
+                restore_user_assignment(
+                    self.database_path,
+                    username,
+                    plugin_id,
+                    previous,
+                )
                 self._apply_profile(user)
                 raise
 
     def _sync_package_links(self, user: dict[str, Any]) -> bool:
-        username = str(user["username"])
-        uid = int(user["uid"])
-        account = pwd.getpwnam(str(user["os_user"]))
-        modules_root = self.users_root / username / "state" / "profiles" / "node_modules"
-        release_root = self.releases.resolve()
-
-        def ensure_owned_directory(path: Path) -> None:
-            try:
-                metadata = path.lstat()
-            except FileNotFoundError:
-                path.mkdir(mode=0o700)
-                os.chown(path, uid, account.pw_gid)
-                return
-            if not stat.S_ISDIR(metadata.st_mode) or stat.S_ISLNK(metadata.st_mode):
-                raise PluginOperationError(f"插件模块目录不是安全的普通目录：{path}")
-            if metadata.st_uid != uid:
-                raise PluginOperationError(f"插件模块目录所有者不正确：{path}")
-
-        ensure_owned_directory(modules_root)
-        desired: dict[str, Path] = {}
-        for item in enabled_package_links(self.database_path, username):
-            package_name = validate_package_name(item["package_name"])
-            release = Path(item["release_path"]).resolve(strict=True)
-            if not release.is_relative_to(release_root):
-                raise PluginOperationError("共享插件 release 路径无效")
-            target = release / "node_modules" / package_name
-            if not target.resolve(strict=True).is_relative_to(release):
-                raise PluginOperationError(f"共享插件包路径无效：{package_name}")
-            desired[package_name] = target
-
-        changed = False
-        known_names = {str(item["package_name"]) for item in list_plugin_versions(self.database_path)}
-        for package_name in known_names - desired.keys():
-            link = modules_root.joinpath(*package_name.split("/"))
-            try:
-                metadata = link.lstat()
-            except FileNotFoundError:
-                continue
-            if stat.S_ISLNK(metadata.st_mode):
-                resolved = link.resolve(strict=False)
-                if resolved.is_relative_to(release_root):
-                    link.unlink()
-                    changed = True
-
-        for package_name, target in desired.items():
-            parts = package_name.split("/")
-            parent = modules_root.joinpath(*parts[:-1])
-            if parent != modules_root:
-                ensure_owned_directory(parent)
-            link = parent / parts[-1]
-            replace = False
-            try:
-                metadata = link.lstat()
-            except FileNotFoundError:
-                replace = True
-            else:
-                if not stat.S_ISLNK(metadata.st_mode):
-                    raise PluginOperationError(f"插件包名与现有模块冲突：{package_name}")
-                resolved = link.resolve(strict=False)
-                expected = target.resolve(strict=True)
-                if resolved == expected:
-                    continue
-                if not resolved.is_relative_to(release_root):
-                    raise PluginOperationError(f"插件包名与现有模块链接冲突：{package_name}")
-                replace = True
-            if replace:
-                temporary = parent / f".{parts[-1]}.dsh-managed-{os.getpid()}"
-                temporary.unlink(missing_ok=True)
-                temporary.symlink_to(target)
-                os.replace(temporary, link)
-                changed = True
-        return changed
+        return sync_package_links(self, user, PluginOperationError)
 
     def _apply_profile(self, user: dict[str, Any]) -> bool:
-        username = str(user["username"])
-        profile_dir = self.users_root / username / "state" / "profiles" / "web"
-        manifest_path = profile_dir / "package.json"
-        if not manifest_path.is_file():
-            raise PluginOperationError("用户 web profile 尚未初始化")
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        dsh = manifest.setdefault("dsh", {})
-        profile = dsh.setdefault("profile", {})
-        bundles = profile.setdefault("bundles", [])
-        if not isinstance(bundles, list) or not all(isinstance(value, str) for value in bundles):
-            raise PluginOperationError("用户 Bundle 列表无效")
-        desired = enabled_aliases(self.database_path, username)
-        retained = [value for value in bundles if not value.startswith(f"{MANAGED_SCOPE}/")]
-        updated = [*retained, *desired]
-        links_changed = self._sync_package_links(user)
-        manifest_changed = updated != bundles
-        if manifest_changed:
-            profile["bundles"] = updated
-            temporary = manifest_path.with_name(f".package.json.tmp-{os.getpid()}")
-            descriptor = os.open(
-                temporary,
-                os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
-                0o600,
-            )
-            try:
-                with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
-                    json.dump(manifest, stream, ensure_ascii=False, indent=2)
-                    stream.write("\n")
-                    stream.flush()
-                    os.fsync(stream.fileno())
-                account = pwd.getpwnam(str(user["os_user"]))
-                os.chown(temporary, int(user["uid"]), account.pw_gid)
-                os.chmod(temporary, 0o644)
-                os.replace(temporary, manifest_path)
-            finally:
-                temporary.unlink(missing_ok=True)
-        return manifest_changed or links_changed
+        return apply_profile(self, user, PluginOperationError)
 
     async def _validate_profile(self, user: dict[str, Any]) -> None:
         username = str(user["username"])

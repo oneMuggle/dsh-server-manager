@@ -54,6 +54,7 @@ RUN python3 -m venv /opt/venv \
 
 COPY gateway /opt/dsh-lan-deployment/gateway
 COPY supervisor /opt/dsh-lan-deployment/supervisor
+COPY common /opt/dsh-lan-deployment/common
 
 RUN mkdir -p \
       /var/lib/dsh \

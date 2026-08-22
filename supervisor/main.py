@@ -24,7 +24,7 @@ from common.storage.users import (
 )
 from common.security import hash_password
 
-from .firewall import apply_firewall
+from .firewall import FirewallError, apply_firewall
 from .ipc_server import ControlServer
 from .plugins import SharedPluginManager, validate_package_name, validate_requested_version
 from .tenants import TenantManager

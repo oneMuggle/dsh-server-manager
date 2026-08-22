@@ -5,7 +5,7 @@
 ## 架构
 
 ```text
-浏览器 -> http://<局域网 IP>:3080 -> FastAPI :8080 -> 用户专属 DSH 127.0.0.1:31xx
+浏览器 -> http://<局域网 IP>:3081 -> FastAPI :8080 -> 用户专属 DSH 127.0.0.1:31xx
 ```
 
 DSH 保持官方默认回环监听。FastAPI 接收请求，aiohttp 负责 HTTP/WebSocket 转发，并把 Host 改写为对应的回环地址。不修改 Harness 源码，也不使用 `--host` 或 `--trusted-host`。
@@ -58,7 +58,7 @@ hostname -I
 在同一局域网设备的浏览器打开：
 
 ```text
-http://<服务器局域网 IP>:3080/
+http://<服务器局域网 IP>:3081/
 ```
 
 没有有效登录信息时，主入口会自动跳转登录页；可以从登录页的“注册新账号”按钮进入注册页。注册或登录成功后会进入该用户的 DSH 主界面。模型提供商和 API Key 在 DSH 的“设置 → 模型”中由每个用户分别配置。
@@ -90,7 +90,7 @@ data/
 curl -i -c cookies.txt \
   -H 'Content-Type: application/json' \
   -d '{"username":"alice","password":"change-me-123"}' \
-  http://127.0.0.1:3080/api/gateway/v1/auth/register
+  http://127.0.0.1:3081/api/gateway/v1/auth/register
 ```
 
 登录、查询当前账号和退出：
@@ -99,10 +99,10 @@ curl -i -c cookies.txt \
 curl -i -c cookies.txt \
   -H 'Content-Type: application/json' \
   -d '{"username":"alice","password":"change-me-123"}' \
-  http://127.0.0.1:3080/api/gateway/v1/auth/login
+  http://127.0.0.1:3081/api/gateway/v1/auth/login
 
-curl -b cookies.txt http://127.0.0.1:3080/api/gateway/v1/auth/me
-curl -X POST -b cookies.txt http://127.0.0.1:3080/api/gateway/v1/auth/logout
+curl -b cookies.txt http://127.0.0.1:3081/api/gateway/v1/auth/me
+curl -X POST -b cookies.txt http://127.0.0.1:3081/api/gateway/v1/auth/logout
 ```
 
 用户名长度为 3–24，只能使用小写字母、数字、下划线和连字符，且必须以字母开头；密码至少 8 个字符。
@@ -124,7 +124,7 @@ curl -X POST -b cookies.txt http://127.0.0.1:3080/api/gateway/v1/auth/logout
 ```sh
 curl \
   -H "Authorization: Bearer <signed-token>" \
-  http://127.0.0.1:3080/api/gateway/v1/auth/me
+  http://127.0.0.1:3081/api/gateway/v1/auth/me
 ```
 
 Bearer Token 与浏览器 Cookie 使用同一套签名、七天有效期和失效检查。用户被禁用或 `password_version` 变化后，两者都会失效；退出登录只清除浏览器 Cookie，不会单独撤销已经交给外部程序的 Bearer Token。
@@ -201,4 +201,4 @@ docker compose -f compose.yml down
 
 ## 安全限制
 
-当前版本面向可信局域网：已有账号之间相互隔离，但注册接口默认开放，且普通 HTTP 没有 TLS。不要把端口 `3080` 直接暴露到公网；公网部署前还需要 HTTPS、注册策略、CSRF/限流强化和管理接口。
+当前版本面向可信局域网：已有账号之间相互隔离，但注册接口默认开放，且普通 HTTP 没有 TLS。不要把端口 `3081` 直接暴露到公网；公网部署前还需要 HTTPS、注册策略、CSRF/限流强化和管理接口。

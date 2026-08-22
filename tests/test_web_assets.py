@@ -4,6 +4,7 @@ import unittest
 
 from gateway.pages import admin_page, auth_page
 from gateway.plugin_ui import plugin_admin_page
+from gateway.upload_ui import UPLOAD_WIDGET
 from gateway.web import STATIC_ROOT, TEMPLATE_ROOT
 
 
@@ -32,6 +33,13 @@ class ManagementWebAssetTests(unittest.TestCase):
                 with self.subTest(template=template, asset=asset):
                     self.assertIn(f'/assets/{asset}', html)
                     self.assertTrue((STATIC_ROOT / asset).is_file())
+
+    def test_injected_upload_widget_is_also_packaged_as_web_assets(self) -> None:
+        widget = UPLOAD_WIDGET.decode()
+        self.assertEqual(widget, (TEMPLATE_ROOT / "upload-widget.html").read_text())
+        for asset in ("upload-widget.css", "upload-widget.js"):
+            self.assertIn(f"/assets/{asset}", widget)
+            self.assertTrue((STATIC_ROOT / asset).is_file())
 
 
 if __name__ == "__main__":

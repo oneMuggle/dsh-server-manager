@@ -1,0 +1,23 @@
+
+<link rel="stylesheet" href="/assets/upload-widget.css?v=1">
+<button id="dshgw-upload-button" type="button">上传文件</button>
+<div id="dshgw-upload-overlay" role="dialog" aria-modal="true" aria-labelledby="dshgw-upload-title">
+  <section id="dshgw-upload-panel">
+    <div id="dshgw-upload-header"><div>
+      <h2 id="dshgw-upload-title">上传文件</h2>
+      <p class="subtitle">浏览工作区目录，并将本机文件上传到当前目录。</p>
+    </div><button id="dshgw-upload-x" type="button" aria-label="关闭">×</button></div>
+    <nav id="dshgw-upload-crumbs" aria-label="当前上传目录"></nav>
+    <div id="dshgw-upload-directories"><p class="dshgw-upload-empty">正在加载目录…</p></div>
+    <div id="dshgw-upload-target">当前目录：workspace</div>
+    <label>选择文件（单文件最大 100 MB）
+      <input id="dshgw-upload-files" type="file" multiple>
+    </label>
+    <div id="dshgw-upload-actions">
+      <button id="dshgw-upload-close" type="button">取消</button>
+      <button id="dshgw-upload-submit" class="primary" type="button">上传到当前目录</button>
+    </div>
+    <div id="dshgw-upload-status" role="status"></div>
+  </section>
+</div>
+<script src="/assets/upload-widget.js?v=1"></script>

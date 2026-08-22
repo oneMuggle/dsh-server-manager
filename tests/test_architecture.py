@@ -4,6 +4,11 @@ import ast
 import unittest
 from pathlib import Path
 
+import common.security
+import gateway.auth
+import supervisor.firewall
+import supervisor.main
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 TEMPORARY_SUPERVISOR_GATEWAY_IMPORTS = {}
@@ -46,6 +51,27 @@ class DependencyDirectionTests(unittest.TestCase):
         }
         actual = {path: imports for path, imports in actual.items() if imports}
         self.assertEqual(actual, TEMPORARY_SUPERVISOR_GATEWAY_IMPORTS)
+
+    def test_gateway_application_does_not_consume_compatibility_shims(self) -> None:
+        tree = ast.parse((PROJECT_ROOT / "gateway" / "application.py").read_text())
+        relative_imports = {
+            node.module
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ImportFrom) and node.level and node.module
+        }
+        self.assertFalse(relative_imports & {"plugins", "registry", "supervisor_client"})
+
+    def test_gateway_auth_reuses_common_password_primitives(self) -> None:
+        self.assertIs(gateway.auth.hash_password, common.security.hash_password)
+        self.assertIs(gateway.auth.verify_password, common.security.verify_password)
+
+    def test_obsolete_gateway_compatibility_modules_are_removed(self) -> None:
+        for name in ("plugins.py", "registry.py", "supervisor_client.py"):
+            with self.subTest(name=name):
+                self.assertFalse((PROJECT_ROOT / "gateway" / name).exists())
+
+    def test_supervisor_handles_the_concrete_firewall_error(self) -> None:
+        self.assertIs(supervisor.main.FirewallError, supervisor.firewall.FirewallError)
 
 
 if __name__ == "__main__":

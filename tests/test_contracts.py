@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 import sqlite3
 import tempfile
@@ -16,8 +17,11 @@ from common.contracts.control import (
 )
 from gateway.main import app, create_app
 from common.storage.users import initialize_registry
-from gateway.supervisor_client import SupervisorError, _request
+from gateway.services.supervisor import SupervisorError, _request
 from supervisor.ipc_server import ControlServer
+from gateway.routers.plugins import registry_plugin_versions
+from gateway.routers.providers import create_custom_provider
+from gateway.routers.uploads import upload_directories
 
 
 PUBLIC_RESPONSES = {
@@ -120,8 +124,17 @@ TABLE_COLUMNS = {
 
 
 class OpenApiContractTests(unittest.TestCase):
+    def test_handlers_using_request_scoped_services_accept_request(self) -> None:
+        for handler in (
+            registry_plugin_versions,
+            create_custom_provider,
+            upload_directories,
+        ):
+            with self.subTest(handler=handler.__name__):
+                self.assertIn("request", inspect.signature(handler).parameters)
+
     def test_application_factory_preserves_the_public_route_contract(self) -> None:
-        self.assertIs(create_app(), app)
+        self.assertIsNot(create_app(), app)
         self.assertEqual(
             sorted(create_app().openapi()["paths"]),
             sorted({path for _, path in PUBLIC_RESPONSES}),

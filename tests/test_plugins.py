@@ -19,7 +19,14 @@ from common.storage.plugin_catalog import list_plugins, register_plugin_version
 from common.storage.plugin_jobs import create_job, get_job
 from common.storage.users import add_user, initialize_registry, replace_registry
 from supervisor.plugins.manager import PluginOperationError, SharedPluginManager
-from supervisor.plugins.registry import validate_package_name, validate_requested_version
+from supervisor.plugins.assignments import restore_user_assignment
+from supervisor.plugins.installer import installed_package
+from supervisor.plugins.profile import apply_profile
+from supervisor.plugins.registry import (
+    parse_version_metadata,
+    validate_package_name,
+    validate_requested_version,
+)
 
 
 def user(username: str, uid: int, port: int) -> dict:
@@ -120,6 +127,19 @@ class PluginInputTests(unittest.TestCase):
         for value in ("file:plugin.tgz", "name@1.0.0", "../plugin", "x;id"):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 validate_package_name(value)
+
+    def test_registry_metadata_parser_deduplicates_and_keeps_latest(self) -> None:
+        self.assertEqual(
+            parse_version_metadata(
+                {"versions": ["1.0.0", "1.0.0"], "version": "1.1.0"}
+            ),
+            {"versions": ["1.0.0", "1.1.0"], "latest": "1.1.0"},
+        )
+
+    def test_focused_plugin_runtime_helpers_are_public(self) -> None:
+        self.assertTrue(callable(installed_package))
+        self.assertTrue(callable(apply_profile))
+        self.assertTrue(callable(restore_user_assignment))
 
     def test_admin_page_exposes_online_offline_and_batch_controls(self) -> None:
         page = plugin_admin_page()

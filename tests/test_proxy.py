@@ -33,7 +33,8 @@ class ProxyTransformTests(unittest.TestCase):
         self.assertIn(UUID_SHIM, transformed)
         self.assertIn(b"client.js?lan=2&rev=abc", transformed)
         self.assertIn("上传文件".encode(), transformed)
-        self.assertIn(b"/api/gateway/v1/files/directories", transformed)
+        self.assertIn(b'/assets/upload-widget.css', transformed)
+        self.assertIn(b'/assets/upload-widget.js', transformed)
         self.assertIn("上传到当前目录".encode(), transformed)
         self.assertIn("退出登录".encode(), transformed)
         self.assertIn(b"/api/gateway/v1/auth/logout", transformed)
@@ -81,7 +82,13 @@ class ManagementPageTests(unittest.TestCase):
 
     def test_swagger_uses_local_static_assets(self) -> None:
         request = Request(
-            {"type": "http", "method": "GET", "path": "/docs", "headers": []}
+            {
+                "type": "http",
+                "method": "GET",
+                "path": "/docs",
+                "headers": [],
+                "app": app,
+            }
         )
         response = asyncio.run(swagger_ui(request))
         html = response.body.decode()
@@ -161,11 +168,12 @@ class TokenAuthenticationTests(unittest.TestCase):
                 "path": "/api/gateway/v1/auth/login",
                 "headers": [],
                 "client": ("192.0.2.10", 12345),
+                "app": app,
             }
         )
         app.state.session_secret = b"test-session-secret"
 
-        with patch("gateway.application.get_user", return_value=user):
+        with patch("gateway.routers.auth.get_user", return_value=user):
             response = asyncio.run(
                 login(request, Credentials(username="alice", password="change-me-123"))
             )
