@@ -12,7 +12,13 @@ from common.security import hash_password
 
 from gateway.application import app, swagger_ui
 from gateway.dependencies import api_token as _api_token
-from gateway.proxy import LOOPBACK_CHECK, UUID_SHIM, _patch_connection_module, _patch_html
+from gateway.proxy.headers import request_headers, response_headers, upstream_url
+from gateway.proxy.transforms import (
+    LOOPBACK_CHECK,
+    UUID_SHIM,
+    patch_connection_module,
+    patch_html,
+)
 from gateway.routers.auth import login
 from gateway.runtime import SWAGGER_UI_STATIC_DIR, config
 from gateway.schemas.auth import Credentials
@@ -35,7 +41,7 @@ class ProxyTransformTests(unittest.TestCase):
             b'<html><head></head><body><script src="/plugins/@deepseek-ai/'
             b'dsh-client-connection/client.js?rev=abc"></script></body></html>'
         )
-        transformed = _patch_html(original)
+        transformed = patch_html(original)
         self.assertIn(UUID_SHIM, transformed)
         self.assertIn(b"client.js?lan=2&rev=abc", transformed)
         self.assertIn("上传文件".encode(), transformed)
@@ -47,15 +53,63 @@ class ProxyTransformTests(unittest.TestCase):
         self.assertNotIn("管理后台".encode(), transformed)
 
     def test_admin_html_includes_management_entry(self) -> None:
-        transformed = _patch_html(b"<html><head></head><body></body></html>", is_admin=True)
+        transformed = patch_html(b"<html><head></head><body></body></html>", is_admin=True)
         self.assertIn(b'href="/admin"', transformed)
         self.assertIn("管理后台".encode(), transformed)
 
     def test_connection_module_forces_loopback_capabilities(self) -> None:
         original = b"const connection = {" + LOOPBACK_CHECK + b"};"
-        transformed = _patch_connection_module(original)
+        transformed = patch_connection_module(original)
         self.assertIn(b"isLoopback: true", transformed)
         self.assertNotIn(LOOPBACK_CHECK, transformed)
+
+
+class ProxyHeaderPolicyTests(unittest.TestCase):
+    def test_upstream_url_preserves_path_and_query(self) -> None:
+        self.assertEqual(
+            upstream_url(3101, "/api/items", "limit=2"),
+            "http://127.0.0.1:3101/api/items?limit=2",
+        )
+
+    def test_http_request_headers_hide_gateway_identity(self) -> None:
+        headers = request_headers(
+            {
+                "Host": "gateway.example",
+                "Cookie": "session=secret",
+                "X-Forwarded-For": "192.0.2.10",
+                "Connection": "keep-alive",
+                "X-Request-ID": "request-1",
+            },
+            3101,
+        )
+        self.assertEqual(headers["Host"], "127.0.0.1:3101")
+        self.assertEqual(headers["Accept-Encoding"], "identity")
+        self.assertEqual(headers["X-Request-ID"], "request-1")
+        self.assertNotIn("Cookie", headers)
+        self.assertNotIn("X-Forwarded-For", headers)
+        self.assertNotIn("Connection", headers)
+
+    def test_transformed_response_drops_stale_entity_headers(self) -> None:
+        upstream = type(
+            "Upstream",
+            (),
+            {
+                "headers": {
+                    "Content-Length": "100",
+                    "Content-Encoding": "gzip",
+                    "ETag": "old",
+                    "Set-Cookie": "upstream=secret",
+                    "Content-Type": "text/html",
+                }
+            },
+        )()
+        headers = response_headers(upstream, transformed=True)
+        self.assertEqual(headers["Cache-Control"], "no-store")
+        self.assertEqual(headers["Content-Type"], "text/html")
+        self.assertNotIn("Content-Length", headers)
+        self.assertNotIn("Content-Encoding", headers)
+        self.assertNotIn("ETag", headers)
+        self.assertNotIn("Set-Cookie", headers)
 
 
 class AuthenticationPageTests(unittest.TestCase):

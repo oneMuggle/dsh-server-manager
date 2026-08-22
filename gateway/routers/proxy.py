@@ -3,7 +3,8 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Request, WebSocket
 from fastapi.responses import RedirectResponse, Response
 
-from ..proxy import cookie_from_websocket, proxy_http, proxy_websocket
+from ..proxy.http import proxy_http
+from ..proxy.websocket import cookie_from_websocket, proxy_websocket
 from ..runtime import config
 from ..services.auth import request_user, resolve_user, user_role
 
