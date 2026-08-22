@@ -12,8 +12,6 @@ import signal
 import socket
 import stat
 import struct
-import subprocess
-from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -41,14 +39,23 @@ from common.storage.users import (
     load_registry,
     replace_registry,
 )
-from gateway.auth import hash_password
+from common.security import hash_password
 
-from .firewall import FirewallError, TenantNetwork, apply_firewall
+from .firewall import FirewallError, apply_firewall
 from .plugins import (
     PluginOperationError,
     SharedPluginManager,
     validate_package_name,
     validate_requested_version,
+)
+from .tenants import TenantManager
+from .users import (
+    admin_password_from_environment as _admin_password_from_environment,
+    network_rules as _network_rules,
+    new_user_record as _new_user_record,
+    normalize_user_roles as _normalize_user_roles,
+    provision_os_user as _provision_os_user,
+    valid_password_record as _valid_password_record,
 )
 
 logging.basicConfig(
@@ -68,14 +75,11 @@ RUNTIME_ROOT = Path("/run/dsh")
 CONTROL_SOCKET = RUNTIME_ROOT / "control.sock"
 GATEWAY_USER = "dsh-gateway"
 GATEWAY_PORT = 8080
-FIRST_UID = 20000
-FIRST_PORT = 3101
 USERNAME_PATTERN = re.compile(r"^[a-z][a-z0-9_-]{2,23}$")
 HARNESS_CLI = "/opt/deepseek-harness/apps/cli/lib/bin.js"
 UPLOAD_SPOOL_PATTERN = re.compile(r"^[0-9a-f]{32}\.upload$")
 MAX_UPLOAD_BYTES = 100 * 1024 * 1024
 ADMIN_USERNAME = "admin"
-ADMIN_PASSWORD_ENV = "DSH_ADMIN_PASSWORD"
 
 
 def _load_registry() -> dict[str, Any]:
@@ -83,53 +87,6 @@ def _load_registry() -> dict[str, Any]:
         return load_registry(REGISTRY_PATH)
     except RegistryError as error:
         raise RuntimeError("invalid user database") from error
-
-
-def _normalize_user_roles(registry: dict[str, Any]) -> bool:
-    users = registry["users"]
-    changed = False
-    for username, user in users.items():
-        if not isinstance(user, dict):
-            raise RuntimeError("invalid user registry entry")
-        expected = "admin" if username == ADMIN_USERNAME else "user"
-        if user.get("role") != expected:
-            user["role"] = expected
-            changed = True
-    return changed
-
-
-def _admin_password_from_environment() -> str:
-    password = os.environ.get(ADMIN_PASSWORD_ENV)
-    if password is None:
-        raise RuntimeError(
-            f"{ADMIN_PASSWORD_ENV} is required when the admin account does not exist"
-        )
-    if not 8 <= len(password) <= 256:
-        raise RuntimeError(f"{ADMIN_PASSWORD_ENV} must contain 8 to 256 characters")
-    return password
-
-
-def _new_user_record(
-    registry: dict[str, Any],
-    username: str,
-    password: dict[str, Any],
-) -> dict[str, Any]:
-    used_uids = {entry.pw_uid for entry in pwd.getpwall()}
-    used_uids.update(int(user["uid"]) for user in registry["users"].values())
-    used_ports = {int(user["port"]) for user in registry["users"].values()}
-    uid = next(value for value in range(FIRST_UID, 60000) if value not in used_uids)
-    port = next(value for value in range(FIRST_PORT, 65536) if value not in used_ports)
-    return {
-        "username": username,
-        "os_user": f"dsh-{username}",
-        "uid": uid,
-        "port": port,
-        "role": "admin" if username == ADMIN_USERNAME else "user",
-        "password": password,
-        "password_version": 1,
-        "created_at": datetime.now(UTC).isoformat(),
-        "disabled": False,
-    }
 
 
 def _ensure_gateway_state() -> None:
@@ -166,68 +123,6 @@ def _ensure_gateway_state() -> None:
                 entry.unlink()
         except FileNotFoundError:
             pass
-
-
-def _provision_os_user(user: dict[str, Any]) -> None:
-    username = str(user["os_user"])
-    uid = int(user["uid"])
-    tenant_root = USERS_ROOT / str(user["username"])
-    home = tenant_root / "home"
-    workspace = home / "workspace"
-    state = tenant_root / "state"
-
-    try:
-        existing = pwd.getpwnam(username)
-        if existing.pw_uid != uid:
-            raise RuntimeError(f"OS user {username} has unexpected UID")
-    except KeyError:
-        subprocess.run(
-            [
-                "useradd",
-                "--uid", str(uid),
-                "--user-group",
-                "--home-dir", str(home),
-                "--no-create-home",
-                "--shell", "/usr/sbin/nologin",
-                username,
-            ],
-            check=True,
-        )
-
-    group_id = pwd.getpwnam(username).pw_gid
-    tenant_root.mkdir(parents=True, exist_ok=True)
-    home.mkdir(parents=True, exist_ok=True)
-    workspace.mkdir(parents=True, exist_ok=True)
-    state.mkdir(parents=True, exist_ok=True)
-    os.chown(tenant_root, 0, 0)
-    os.chmod(tenant_root, 0o711)
-    for directory in (home, workspace, state):
-        os.chown(directory, uid, group_id)
-        os.chmod(directory, 0o700)
-
-
-def _network_rules(registry: dict[str, Any]) -> list[TenantNetwork]:
-    return [
-        TenantNetwork(uid=int(user["uid"]), port=int(user["port"]))
-        for user in registry["users"].values()
-        if user.get("disabled") is not True
-    ]
-
-
-def _valid_password_record(value: Any) -> bool:
-    if not isinstance(value, dict) or value.get("algorithm") != "scrypt":
-        return False
-    try:
-        return (
-            len(str(value["salt"])) >= 16
-            and len(str(value["hash"])) >= 32
-            and int(value["n"]) == 1 << 14
-            and int(value["r"]) == 8
-            and int(value["p"]) == 1
-            and int(value["dklen"]) == 64
-        )
-    except (KeyError, TypeError, ValueError):
-        return False
 
 
 def _upload_directory_parts(value: str) -> tuple[str, ...]:
@@ -467,135 +362,6 @@ def _install_uploaded_file(
         "filename": filename,
         "size": expected_size,
     }
-
-
-async def _http_ready(port: int) -> bool:
-    try:
-        reader, writer = await asyncio.wait_for(
-            asyncio.open_connection("127.0.0.1", port), timeout=1
-        )
-        writer.write(
-            f"GET / HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n".encode()
-        )
-        await writer.drain()
-        status = await asyncio.wait_for(reader.readline(), timeout=2)
-        writer.close()
-        await writer.wait_closed()
-        return status.startswith(b"HTTP/1.1 200") or status.startswith(b"HTTP/1.0 200")
-    except (OSError, asyncio.TimeoutError):
-        return False
-
-
-class TenantManager:
-    def __init__(self) -> None:
-        self.tasks: dict[str, asyncio.Task[None]] = {}
-        self.ready: dict[str, asyncio.Event] = {}
-        self.processes: dict[str, asyncio.subprocess.Process] = {}
-        self.restart_requests: set[str] = set()
-        self.stopping = False
-
-    def start(self, user: dict[str, Any]) -> None:
-        username = str(user["username"])
-        if username in self.tasks:
-            return
-        self.ready[username] = asyncio.Event()
-        self.tasks[username] = asyncio.create_task(
-            self._run(user), name=f"tenant-{username}"
-        )
-
-    async def wait_ready(self, username: str, timeout: float = 120) -> bool:
-        try:
-            await asyncio.wait_for(self.ready[username].wait(), timeout=timeout)
-            return True
-        except asyncio.TimeoutError:
-            return False
-
-    async def _run(self, user: dict[str, Any]) -> None:
-        username = str(user["username"])
-        os_user = str(user["os_user"])
-        port = int(user["port"])
-        tenant_root = USERS_ROOT / username
-        home = tenant_root / "home"
-        workspace = home / "workspace"
-        state = tenant_root / "state"
-        delay = 1
-
-        while not self.stopping:
-            LOGGER.info("starting DSH tenant %s on loopback port %s", username, port)
-            process = await asyncio.create_subprocess_exec(
-                "runuser", "-u", os_user, "--",
-                "env", "-i",
-                f"HOME={home}",
-                f"DSH_HOME={state}",
-                "PATH=/usr/local/bin:/usr/bin:/bin",
-                "/usr/local/bin/node",
-                HARNESS_CLI,
-                "web",
-                "--no-open",
-                "--port", str(port),
-                cwd=workspace,
-                start_new_session=True,
-            )
-            self.processes[username] = process
-
-            try:
-                for _ in range(120):
-                    if process.returncode is not None or self.stopping:
-                        break
-                    if await _http_ready(port):
-                        self.ready[username].set()
-                        delay = 1
-                        break
-                    await asyncio.sleep(1)
-
-                code = await process.wait()
-            except asyncio.CancelledError:
-                if process.returncode is None:
-                    try:
-                        os.killpg(process.pid, signal.SIGTERM)
-                    except ProcessLookupError:
-                        pass
-                    try:
-                        await asyncio.wait_for(process.wait(), timeout=8)
-                    except asyncio.TimeoutError:
-                        try:
-                            os.killpg(process.pid, signal.SIGKILL)
-                        except ProcessLookupError:
-                            pass
-                        await process.wait()
-                raise
-            finally:
-                self.processes.pop(username, None)
-            self.ready[username].clear()
-            if self.stopping:
-                return
-            if username in self.restart_requests:
-                self.restart_requests.discard(username)
-                delay = 1
-                continue
-            LOGGER.error("DSH tenant %s exited with status %s; restarting", username, code)
-            await asyncio.sleep(delay)
-            delay = min(delay * 2, 30)
-
-    async def restart(self, username: str) -> bool:
-        process = self.processes.get(username)
-        ready = self.ready.get(username)
-        if process is None or ready is None or process.returncode is not None:
-            return False
-        ready.clear()
-        self.restart_requests.add(username)
-        try:
-            os.killpg(process.pid, signal.SIGTERM)
-        except ProcessLookupError:
-            self.restart_requests.discard(username)
-            return False
-        return await self.wait_ready(username)
-
-    async def stop(self) -> None:
-        self.stopping = True
-        for task in self.tasks.values():
-            task.cancel()
-        await asyncio.gather(*self.tasks.values(), return_exceptions=True)
 
 
 class Supervisor:

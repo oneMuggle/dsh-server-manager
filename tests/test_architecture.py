@@ -6,9 +6,7 @@ from pathlib import Path
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-TEMPORARY_SUPERVISOR_GATEWAY_IMPORTS = {
-    "supervisor/main.py": {"gateway.auth"},
-}
+TEMPORARY_SUPERVISOR_GATEWAY_IMPORTS = {}
 
 
 def _runtime_imports(path: Path) -> set[str]:

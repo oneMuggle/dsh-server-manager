@@ -2,12 +2,11 @@ from __future__ import annotations
 
 import unittest
 
+from common.security import hash_password, verify_password
 from gateway.auth import (
     FixedWindowLimiter,
-    hash_password,
     make_session,
     parse_session,
-    verify_password,
 )
 
 

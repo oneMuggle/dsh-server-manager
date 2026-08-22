@@ -4,12 +4,11 @@ import os
 import unittest
 from unittest.mock import patch
 
-from supervisor.main import (
-    _admin_password_from_environment,
-    _normalize_user_roles,
-    _upload_directory_parts,
-    _valid_password_record,
-    _validate_upload_filename,
+from supervisor.main import _upload_directory_parts, _validate_upload_filename
+from supervisor.users import (
+    admin_password_from_environment,
+    normalize_user_roles,
+    valid_password_record,
 )
 
 
@@ -33,7 +32,7 @@ class UploadPathTests(unittest.TestCase):
 class SupervisorRegressionTests(unittest.TestCase):
     def test_valid_scrypt_record_is_accepted(self) -> None:
         self.assertTrue(
-            _valid_password_record(
+            valid_password_record(
                 {
                     "algorithm": "scrypt",
                     "salt": "a" * 16,
@@ -54,25 +53,25 @@ class SupervisorRegressionTests(unittest.TestCase):
                 "admin": {"role": "user"},
             },
         }
-        self.assertTrue(_normalize_user_roles(registry))
+        self.assertTrue(normalize_user_roles(registry))
         self.assertEqual(registry["users"]["admin"]["role"], "admin")
         self.assertEqual(registry["users"]["first"]["role"], "user")
-        self.assertFalse(_normalize_user_roles(registry))
+        self.assertFalse(normalize_user_roles(registry))
 
     def test_bootstrap_admin_password_is_required_and_validated(self) -> None:
         with patch.dict(os.environ, {}, clear=True):
             with self.assertRaises(RuntimeError):
-                _admin_password_from_environment()
+                admin_password_from_environment()
         with patch.dict(os.environ, {"DSH_ADMIN_PASSWORD": "short"}, clear=True):
             with self.assertRaises(RuntimeError):
-                _admin_password_from_environment()
+                admin_password_from_environment()
         with patch.dict(
             os.environ,
             {"DSH_ADMIN_PASSWORD": "strong-test-password"},
             clear=True,
         ):
             self.assertEqual(
-                _admin_password_from_environment(),
+                admin_password_from_environment(),
                 "strong-test-password",
             )
 
