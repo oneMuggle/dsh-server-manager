@@ -14,7 +14,7 @@ from common.contracts.control import (
     CreateUserRequest,
     parse_control_request,
 )
-from gateway.main import app
+from gateway.main import app, create_app
 from common.storage.users import initialize_registry
 from gateway.supervisor_client import SupervisorError, _request
 from supervisor.ipc_server import ControlServer
@@ -120,6 +120,13 @@ TABLE_COLUMNS = {
 
 
 class OpenApiContractTests(unittest.TestCase):
+    def test_application_factory_preserves_the_public_route_contract(self) -> None:
+        self.assertIs(create_app(), app)
+        self.assertEqual(
+            sorted(create_app().openapi()["paths"]),
+            sorted({path for _, path in PUBLIC_RESPONSES}),
+        )
+
     def test_public_paths_methods_and_response_statuses_are_stable(self) -> None:
         schema = app.openapi()
         actual = {

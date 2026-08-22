@@ -163,7 +163,7 @@ class TokenAuthenticationTests(unittest.TestCase):
         )
         app.state.session_secret = b"test-session-secret"
 
-        with patch("gateway.main.get_user", return_value=user):
+        with patch("gateway.application.get_user", return_value=user):
             response = asyncio.run(
                 login(request, Credentials(username="alice", password="change-me-123"))
             )
