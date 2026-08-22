@@ -9,12 +9,17 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from common.security import hash_password, verify_password
 from common.storage.users import RegistryError, get_user
 
-from ..auth import FixedWindowLimiter
 from ..dependencies import ApiToken
 from ..pages import auth_page
 from ..runtime import config
 from ..schemas.auth import AuthenticatedUser, Credentials, CurrentUser
-from ..services.auth import authenticated_response, request_user, require_session, user_role
+from ..services.auth import (
+    FixedWindowLimiter,
+    authenticated_response,
+    request_user,
+    require_session,
+    user_role,
+)
 from ..services.supervisor import SupervisorError, create_user
 
 

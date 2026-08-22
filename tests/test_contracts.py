@@ -15,7 +15,7 @@ from common.contracts.control import (
     CreateUserRequest,
     parse_control_request,
 )
-from gateway.main import app, create_app
+from gateway.application import app, create_app
 from common.storage.users import initialize_registry
 from gateway.services.supervisor import SupervisorError, _request
 from supervisor.control import ControlServer

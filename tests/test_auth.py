@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 
 from common.security import hash_password, verify_password
-from gateway.auth import (
+from gateway.services.auth import (
     FixedWindowLimiter,
     make_session,
     parse_session,

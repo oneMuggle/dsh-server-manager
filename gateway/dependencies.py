@@ -5,10 +5,9 @@ from typing import Annotated
 from fastapi import Depends, HTTPException, Request, Security
 from fastapi.security import APIKeyCookie, HTTPAuthorizationCredentials, HTTPBearer
 
-from .config import Config
+from .runtime import config
 
 
-config = Config.from_environment()
 session_cookie = APIKeyCookie(name=config.cookie_name, auto_error=False)
 bearer_token = HTTPBearer(auto_error=False)
 SessionCookie = Annotated[str | None, Security(session_cookie)]

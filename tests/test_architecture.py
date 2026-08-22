@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 import common.security
-import gateway.auth
+import gateway.routers.auth
 import supervisor.application
 import supervisor.main
 import supervisor.tenants.firewall
@@ -63,8 +63,28 @@ class DependencyDirectionTests(unittest.TestCase):
         self.assertFalse(relative_imports & {"plugins", "registry", "supervisor_client"})
 
     def test_gateway_auth_reuses_common_password_primitives(self) -> None:
-        self.assertIs(gateway.auth.hash_password, common.security.hash_password)
-        self.assertIs(gateway.auth.verify_password, common.security.verify_password)
+        self.assertIs(gateway.routers.auth.hash_password, common.security.hash_password)
+        self.assertIs(gateway.routers.auth.verify_password, common.security.verify_password)
+
+    def test_gateway_has_one_runtime_config_instance(self) -> None:
+        calls = []
+        for path in (PROJECT_ROOT / "gateway").rglob("*.py"):
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            for node in ast.walk(tree):
+                if (
+                    isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "from_environment"
+                ):
+                    calls.append(path.relative_to(PROJECT_ROOT).as_posix())
+        self.assertEqual(calls, ["gateway/runtime.py"])
+
+    def test_gateway_main_exports_only_the_asgi_app(self) -> None:
+        tree = ast.parse((PROJECT_ROOT / "gateway" / "main.py").read_text())
+        imports = [node for node in tree.body if isinstance(node, ast.ImportFrom)]
+        self.assertEqual(len(imports), 1)
+        self.assertEqual(imports[0].module, "application")
+        self.assertEqual([alias.name for alias in imports[0].names], ["app"])
 
     def test_obsolete_gateway_compatibility_modules_are_removed(self) -> None:
         for name in ("plugins.py", "registry.py", "supervisor_client.py"):

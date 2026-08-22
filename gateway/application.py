@@ -81,17 +81,3 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
-
-# Stable import points used by existing integrations and tests.
-login = auth.login
-
-
-__all__ = [
-    "SWAGGER_UI_STATIC_DIR",
-    "app",
-    "config",
-    "create_app",
-    "health",
-    "login",
-    "swagger_ui",
-]
