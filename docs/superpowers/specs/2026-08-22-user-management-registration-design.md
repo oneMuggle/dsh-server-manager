@@ -64,7 +64,7 @@ All endpoints require the existing administrator Cookie or Bearer token.
 
 - `GET /api/gateway/v1/admin/users` retains the current list response.
 - `GET /api/gateway/v1/admin/users/{username}` returns the same public user
-  representation: `username`, `role`, `disabled`, and `createdAt`.
+  representation: `username`, `role`, `disabled`, and `created_at`.
 - Internal UID, operating-system username, port, password record, and password
   version are never returned.
 
