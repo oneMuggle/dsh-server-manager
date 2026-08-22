@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 from .config import Config
+from .web import STATIC_ROOT
 
 
 config = Config.from_environment()
-SWAGGER_UI_STATIC_DIR = Path(__file__).parent / "static" / "swagger-ui"
+SWAGGER_UI_STATIC_DIR = STATIC_ROOT / "swagger-ui"

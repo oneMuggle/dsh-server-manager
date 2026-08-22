@@ -9,7 +9,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 from gateway.plugin_ui import plugin_admin_page
-from gateway.web import STATIC_ROOT
+from gateway.web import MANAGEMENT_STATIC_ROOT
 from common.storage.assignments import (
     apply_plugin_defaults,
     set_plugin_default,
@@ -143,7 +143,7 @@ class PluginInputTests(unittest.TestCase):
 
     def test_admin_page_exposes_online_offline_and_batch_controls(self) -> None:
         page = plugin_admin_page()
-        script = (STATIC_ROOT / "plugins.js").read_text()
+        script = (MANAGEMENT_STATIC_ROOT / "plugins.js").read_text()
         self.assertIn("/api/gateway/v1/admin/plugins/registry-versions", script)
         self.assertIn("/api/gateway/v1/admin/plugins/online", script)
         self.assertIn("/api/gateway/v1/admin/plugins/offline", script)

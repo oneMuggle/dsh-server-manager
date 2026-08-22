@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .routers import admin_users, auth, plugins, providers, proxy, uploads
 from .runtime import SWAGGER_UI_STATIC_DIR, config
-from .web import STATIC_ROOT as MANAGEMENT_STATIC_DIR
+from .web import MANAGEMENT_STATIC_ROOT as MANAGEMENT_STATIC_DIR
 
 
 @asynccontextmanager

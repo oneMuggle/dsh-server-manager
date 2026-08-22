@@ -20,7 +20,7 @@ from gateway.main import (
 )
 from gateway.schemas.auth import Credentials
 from gateway.pages import admin_page, auth_page
-from gateway.web import STATIC_ROOT
+from gateway.web import MANAGEMENT_STATIC_ROOT
 
 
 class ProxyTransformTests(unittest.TestCase):
@@ -68,7 +68,7 @@ class AuthenticationPageTests(unittest.TestCase):
 class ManagementPageTests(unittest.TestCase):
     def test_management_page_loads_users_and_links_swagger(self) -> None:
         page = admin_page()
-        script = (STATIC_ROOT / "admin.js").read_text()
+        script = (MANAGEMENT_STATIC_ROOT / "admin.js").read_text()
         self.assertIn("/api/gateway/v1/admin/users", script)
         self.assertIn('href="/docs"', page)
         self.assertIn("用户管理", page)

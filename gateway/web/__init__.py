@@ -6,6 +6,7 @@ from pathlib import Path
 WEB_ROOT = Path(__file__).resolve().parent
 TEMPLATE_ROOT = WEB_ROOT / "templates"
 STATIC_ROOT = WEB_ROOT / "static"
+MANAGEMENT_STATIC_ROOT = STATIC_ROOT / "management"
 
 
 def render_template(name: str) -> str:
