@@ -1,6 +1,6 @@
 .env
 .venv/
 
-data/
+docker/data/
 __pycache__/
 *.pyc

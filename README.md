@@ -65,10 +65,10 @@ http://<服务器局域网 IP>:3081/
 
 `admin` 是唯一固定管理员，其他注册账号均为普通用户。管理员的 DSH 主界面会显示“管理后台”入口。
 
-宿主机只挂载 `data/` 一个目录，内部布局如下：
+宿主机只挂载 `docker/data/` 一个目录，内部布局如下：
 
 ```text
-data/
+docker/data/
 ├── gateway/
 │   ├── users.db          # SQLite 用户数据库
 │   └── session-secret    # Cookie/Bearer Token 签名密钥
@@ -129,7 +129,7 @@ curl \
 
 Bearer Token 与浏览器 Cookie 使用同一套签名、七天有效期和失效检查。用户被禁用或 `password_version` 变化后，两者都会失效；退出登录只清除浏览器 Cookie，不会单独撤销已经交给外部程序的 Bearer Token。
 
-用户数据使用 SQLite 存储，用户名、UID 和租户端口均有唯一索引。升级已有部署时，如果发现旧的 `data/gateway/users.json` 且数据库尚为空，启动过程会自动将所有账号导入 `users.db`；旧 JSON 文件会保留作为迁移备份，后续查询和注册只使用 SQLite。
+用户数据使用 SQLite 存储，用户名、UID 和租户端口均有唯一索引。升级已有部署时，如果发现旧的 `docker/data/gateway/users.json` 且数据库尚为空，启动过程会自动将所有账号导入 `users.db`；旧 JSON 文件会保留作为迁移备份，后续查询和注册只使用 SQLite。
 
 ## 管理后台与 Swagger
 
@@ -170,7 +170,7 @@ Swagger UI 位于 `/docs`，OpenAPI 文档位于 `/openapi.json`。Swagger UI �
 - 对全部启用用户或指定用户批量执行安装、卸载、启用和停用；
 - 可把当前策略设为新用户默认策略，并在任务列表中查看每个操作的执行状态。
 
-插件的每个版本只在 `data/plugins/releases/` 保存一份只读实体。用户目录中不复制插件文件，SQLite 只记录用户与共享版本的关联和启用状态；启用时由用户 profile 引用容器内的版本化解析别名，并在 `profiles/node_modules` 创建指向共享 release 的包名软链接，供插件 patch 解析运行时代码。因此同一版本不会随用户数量增加而重复占用磁盘，不同版本也可以同时服务不同用户。
+插件的每个版本只在 `docker/data/plugins/releases/` 保存一份只读实体。用户目录中不复制插件文件，SQLite 只记录用户与共享版本的关联和启用状态；启用时由用户 profile 引用容器内的版本化解析别名，并在 `profiles/node_modules` 创建指向共享 release 的包名软链接，供插件 patch 解析运行时代码。因此同一版本不会随用户数量增加而重复占用磁盘，不同版本也可以同时服务不同用户。
 
 版本发现接口为 `GET /api/gateway/v1/admin/plugins/registry-versions?packageName=@scope/plugin`，返回全部可用版本及 `latest` 当前指向的精确版本。选择版本后调用 `POST /api/gateway/v1/admin/plugins/online`：
 
