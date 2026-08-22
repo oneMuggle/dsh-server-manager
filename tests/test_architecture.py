@@ -7,8 +7,8 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 TEMPORARY_SUPERVISOR_GATEWAY_IMPORTS = {
-    "supervisor/main.py": {"gateway.auth", "gateway.plugins", "gateway.registry"},
-    "supervisor/plugins.py": {"gateway.plugins", "gateway.registry"},
+    "supervisor/main.py": {"gateway.auth", "gateway.plugins"},
+    "supervisor/plugins.py": {"gateway.plugins"},
 }
 
 

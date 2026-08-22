@@ -112,6 +112,7 @@ git commit -m "test: lock external compatibility contracts"
 - Create: `common/storage/__init__.py`
 - Create: `common/storage/database.py`
 - Create: `common/storage/users.py`
+- Create: `common/storage/plugin_catalog.py` with schema creation only
 - Modify: `gateway/registry.py`
 - Modify: `supervisor/main.py`
 - Modify: `tests/test_registry.py`
@@ -133,7 +134,7 @@ Expected: import failure for `common.storage.users`.
 
 - [ ] **Step 3: Move database and user repository code**
 
-Move connection context managers to `common.storage.database`, move the user schema and repository functions to `common.storage.users`, and import `create_plugin_schema` lazily inside schema initialization until Task 4. Retain `RegistryError` and function re-exports in `gateway.registry` so existing callers remain compatible.
+Move connection context managers to `common.storage.database`, move the user schema and repository functions to `common.storage.users`, and move `create_plugin_schema` to `common.storage.plugin_catalog` before it is called. Task 4 adds the catalog repository functions to that module. Retain `RegistryError` and function re-exports in `gateway.registry` so existing callers remain compatible.
 
 - [ ] **Step 4: Migrate Supervisor imports**
 

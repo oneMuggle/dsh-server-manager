@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable
 from urllib.parse import urlsplit
 
+from common.storage.users import get_user
 from gateway.plugins import (
     enabled_aliases,
     enabled_package_links,
@@ -29,7 +30,6 @@ from gateway.plugins import (
     set_plugin_default,
     set_user_plugin,
 )
-from gateway.registry import get_user
 
 
 PACKAGE_PATTERN = re.compile(

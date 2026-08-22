@@ -17,20 +17,20 @@ from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-from gateway.auth import hash_password
-from gateway.plugins import (
-    apply_plugin_defaults,
-    create_job,
-    get_plugin_version,
-    unfinished_job_ids,
-)
-from gateway.registry import (
+from common.storage.users import (
     RegistryError,
     add_user,
     get_user,
     initialize_registry,
     load_registry,
     replace_registry,
+)
+from gateway.auth import hash_password
+from gateway.plugins import (
+    apply_plugin_defaults,
+    create_job,
+    get_plugin_version,
+    unfinished_job_ids,
 )
 
 from .firewall import FirewallError, TenantNetwork, apply_firewall

@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from gateway.registry import (
+from common.storage.users import (
     RegistryError,
     add_user,
     get_user,
