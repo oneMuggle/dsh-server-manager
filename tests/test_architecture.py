@@ -62,6 +62,17 @@ class DependencyDirectionTests(unittest.TestCase):
         }
         self.assertFalse(relative_imports & {"plugins", "registry", "supervisor_client"})
 
+    def test_provider_schema_is_the_canonical_owner(self) -> None:
+        tree = ast.parse(
+            (PROJECT_ROOT / "gateway" / "schemas" / "providers.py").read_text()
+        )
+        imports = {
+            node.module
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ImportFrom) and node.module
+        }
+        self.assertNotIn("gateway.providers", imports)
+
     def test_gateway_auth_reuses_common_password_primitives(self) -> None:
         self.assertIs(gateway.routers.auth.hash_password, common.security.hash_password)
         self.assertIs(gateway.routers.auth.verify_password, common.security.verify_password)
