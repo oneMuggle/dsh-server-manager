@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import os
 import pwd
 import re
@@ -22,7 +21,6 @@ def load_user_registry(config: SupervisorConfig) -> dict[str, Any]:
 
 def initialize_gateway_state(
     config: SupervisorConfig,
-    logger: logging.Logger,
 ) -> None:
     gateway = pwd.getpwnam(config.gateway_user)
     config.state_root.mkdir(parents=True, exist_ok=True)
@@ -35,9 +33,7 @@ def initialize_gateway_state(
     os.chown(config.users_root, 0, 0)
     os.chmod(config.users_root, 0o755)
 
-    migrated = initialize_registry(config.registry_path, config.legacy_registry_path)
-    if migrated:
-        logger.info("migrated legacy user registry from %s", config.legacy_registry_path)
+    initialize_registry(config.registry_path)
     os.chown(config.registry_path, 0, gateway.pw_gid)
     os.chmod(config.registry_path, 0o640)
     if not config.secret_path.exists():

@@ -129,7 +129,7 @@ curl \
 
 Bearer Token 与浏览器 Cookie 使用同一套签名、七天有效期和失效检查。用户被禁用或 `password_version` 变化后，两者都会失效；退出登录只清除浏览器 Cookie，不会单独撤销已经交给外部程序的 Bearer Token。
 
-用户数据使用 SQLite 存储，用户名、UID 和租户端口均有唯一索引。升级已有部署时，如果发现旧的 `docker/data/gateway/users.json` 且数据库尚为空，启动过程会自动将所有账号导入 `users.db`；旧 JSON 文件会保留作为迁移备份，后续查询和注册只使用 SQLite。
+用户数据使用 SQLite 存储，用户名、UID 和租户端口均有唯一索引，数据库文件位于 `docker/data/gateway/users.db`。
 
 ## 管理后台与 Swagger
 

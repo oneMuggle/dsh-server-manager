@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import sqlite3
 import tempfile
 import unittest
@@ -49,7 +48,7 @@ class RegistryDatabaseTests(unittest.TestCase):
         self.temporary_directory.cleanup()
 
     def test_adds_and_queries_user_by_primary_key(self) -> None:
-        self.assertFalse(initialize_registry(self.database))
+        initialize_registry(self.database)
         alice = _user("alice", 20001, 3102)
         add_user(self.database, alice)
 
@@ -63,20 +62,15 @@ class RegistryDatabaseTests(unittest.TestCase):
             ).fetchall()
         self.assertIn("INDEX", " ".join(str(column) for row in query_plan for column in row))
 
-    def test_migrates_legacy_json_once_and_retains_all_fields(self) -> None:
-        legacy = self.root / "users.json"
-        alice = _user("alice", 20001, 3102)
-        legacy.write_text(
-            json.dumps({"version": 1, "users": {"alice": alice}}),
+    def test_initialization_accepts_only_the_sqlite_path(self) -> None:
+        unsupported_source = self.root / "old-user-data"
+        unsupported_source.write_text(
+            '{"version":1,"users":{}}',
             encoding="utf-8",
         )
 
-        self.assertTrue(initialize_registry(self.database, legacy))
-        self.assertEqual(get_user(self.database, "alice"), alice)
-
-        legacy.write_text("not valid json", encoding="utf-8")
-        self.assertFalse(initialize_registry(self.database, legacy))
-        self.assertEqual(get_user(self.database, "alice"), alice)
+        with self.assertRaises(TypeError):
+            initialize_registry(self.database, unsupported_source)
 
     def test_replaces_registry_atomically_and_enforces_uniqueness(self) -> None:
         initialize_registry(self.database)

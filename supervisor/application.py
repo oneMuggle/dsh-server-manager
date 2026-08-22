@@ -259,7 +259,7 @@ class Supervisor:
         )
 
     async def start(self) -> None:
-        initialize_gateway_state(self.config, LOGGER)
+        initialize_gateway_state(self.config)
         registry = load_user_registry(self.config)
         registry_changed = _normalize_user_roles(registry)
         if ADMIN_USERNAME not in registry["users"]:

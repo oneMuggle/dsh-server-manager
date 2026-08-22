@@ -15,7 +15,7 @@
 - Keep `gateway.main:app` and `python -m supervisor.main` as entry points.
 - Keep the existing single-container process model and Compose port `3081`.
 - Keep HTTP paths, public field names, status codes, Cookie/Bearer behavior, IPC action names, and JSON response shapes.
-- Keep SQLite paths, tables, columns, legacy JSON migration, and existing data.
+- Keep SQLite paths, tables, columns, and existing data.
 - Keep filesystem paths, environment variables, shared plugin release layout, and offline Swagger assets.
 - Do not add a frontend framework, frontend build chain, dependency-injection framework, or extra container.
 - Run `.venv/bin/python -m unittest discover -s tests -v` before every commit.
@@ -26,7 +26,7 @@
 1. `feat: checkpoint single-container management baseline` — preserve the already-tested pre-refactor implementation.
 2. `docs: record modular architecture and migration plan` — add the approved design and this executable plan.
 3. `test: lock external compatibility contracts` — capture OpenAPI, SQLite, IPC, page, and dependency-direction behavior.
-4. `refactor: extract common user storage` — move connection policy, user schema, legacy migration, and user repository.
+4. `refactor: extract common user storage` — move connection policy, user schema, and user repository.
 5. `refactor: extract common plugin storage` — split catalog, jobs, and assignment repositories.
 6. `refactor: add typed supervisor control contracts` — validate IPC actions without changing the wire protocol.
 7. `refactor: separate supervisor users and tenants` — move privileged user and process lifecycle code.
@@ -119,12 +119,12 @@ git commit -m "test: lock external compatibility contracts"
 - Modify: `tests/test_architecture.py`
 
 **Interfaces:**
-- Consumes: SQLite path objects and legacy registry dictionaries.
-- Produces: `read_connection(path)`, `write_connection(path)`, `initialize_registry(path, legacy_json_path=None)`, `load_registry(path)`, `get_user(path, username)`, `list_users(path)`, `add_user(path, user)`, and `replace_registry(path, registry)`.
+- Consumes: SQLite path objects and registry dictionaries.
+- Produces: `read_connection(path)`, `write_connection(path)`, `initialize_registry(path)`, `load_registry(path)`, `get_user(path, username)`, `list_users(path)`, `add_user(path, user)`, and `replace_registry(path, registry)`.
 
 - [ ] **Step 1: Write a failing import and persistence test**
 
-Import repository functions from `common.storage.users`, initialize a temporary legacy JSON file, and assert the returned user has literal `username`, `uid`, `port`, `password`, and `role` values.
+Import repository functions from `common.storage.users`, initialize a temporary SQLite database, and assert the returned user has literal `username`, `uid`, `port`, `password`, and `role` values.
 
 - [ ] **Step 2: Verify the test fails for the missing package**
 

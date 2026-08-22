@@ -141,7 +141,7 @@ The migration is incremental:
 ## Acceptance Criteria
 
 - The existing 45-test baseline remains green throughout the migration.
-- Compatibility tests cover OpenAPI paths/security/field names, SQLite schema and legacy migration, IPC payloads, page routes, and offline Swagger assets.
+- Contract tests cover OpenAPI paths/security/field names, the SQLite schema, IPC payloads, page routes, and offline Swagger assets.
 - Existing user, plugin, assignment, and job data remains readable without destructive migration.
 - Login, registration, Bearer/Cookie authentication, uploads, provider creation, proxying, plugin import/discovery/assignment/rollback, and tenant readiness are verified.
 - The Docker image builds successfully and Compose serves the application on `3081`.

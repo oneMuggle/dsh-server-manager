@@ -79,8 +79,8 @@ def _insert_user(connection: sqlite3.Connection, user: dict[str, Any]) -> None:
     )
 
 
-def initialize_registry(path: Path, legacy_json_path: Path | None = None) -> bool:
-    """Create the SQLite registry and import a legacy JSON registry once."""
+def initialize_registry(path: Path) -> None:
+    """Create or upgrade the SQLite user registry."""
     path.parent.mkdir(parents=True, exist_ok=True)
     try:
         with write_connection(path) as connection:
@@ -88,20 +88,6 @@ def initialize_registry(path: Path, legacy_json_path: Path | None = None) -> boo
             if version not in {0, 1, SCHEMA_VERSION}:
                 raise RegistryError(f"unsupported user database version: {version}")
             _create_schema(connection)
-            user_count = int(connection.execute("SELECT COUNT(*) FROM users").fetchone()[0])
-            if user_count or legacy_json_path is None or not legacy_json_path.exists():
-                return False
-            try:
-                legacy_registry = _validate_registry(
-                    json.loads(legacy_json_path.read_text(encoding="utf-8"))
-                )
-            except (OSError, json.JSONDecodeError) as error:
-                raise RegistryError("unable to read legacy user registry") from error
-            for user in legacy_registry["users"].values():
-                if not isinstance(user, dict):
-                    raise RegistryError("invalid user registry entry")
-                _insert_user(connection, user)
-            return bool(legacy_registry["users"])
     except sqlite3.DatabaseError as error:
         raise RegistryError("unable to initialize user database") from error
 

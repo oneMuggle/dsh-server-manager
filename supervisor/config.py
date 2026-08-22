@@ -11,7 +11,6 @@ class SupervisorConfig:
     gateway_root: Path
     users_root: Path
     registry_path: Path
-    legacy_registry_path: Path
     secret_path: Path
     upload_root: Path
     runtime_root: Path
@@ -32,7 +31,6 @@ class SupervisorConfig:
             gateway_root=gateway_root,
             users_root=state_root / "users",
             registry_path=gateway_root / "users.db",
-            legacy_registry_path=gateway_root / "users.json",
             secret_path=gateway_root / "session-secret",
             upload_root=gateway_root / "uploads",
             runtime_root=runtime_root,
