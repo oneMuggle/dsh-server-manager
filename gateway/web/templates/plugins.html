@@ -4,20 +4,25 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>插件管理 · DeepSeek Harness</title>
-  <link rel="stylesheet" href="/gateway-assets/plugins.css?v=3">
+  <link rel="stylesheet" href="/gateway-assets/plugins.css?v=5">
 </head>
 <body><main>
   <!-- MANAGEMENT_HEADER -->
   <section><h2>导入插件</h2><div class="row">
     <form id="online" class="grow"><input id="online-package" name="packageName" required placeholder="npm 包名，例如 @scope/plugin"><button id="discover-versions" type="submit">发现版本</button><select id="online-version" aria-label="插件版本" disabled><option>请先发现版本</option></select><button id="import-online" class="primary" type="button" disabled>导入所选版本</button></form>
     <form id="offline"><input name="file" type="file" accept=".tgz,application/gzip" required><button>离线导入</button></form>
-  </div><p class="muted">联网导入会先从 Registry 读取全部版本，选择后才下载该精确版本。插件实体只保存一份；安装脚本不会执行。</p></section>
-  <section><h2>插件与用户策略</h2><div class="row">
-    <label>目标 <select id="target"><option value="all">所有启用用户</option></select></label>
-    <label><input id="future" type="checkbox"> 同步应用到后续新用户</label>
-  </div></section>
-  <section class="collapsible-section"><details id="builtin-details"><summary><h2>官方内置插件 <span id="builtin-count" class="section-count"></span></h2><span class="collapse-label" aria-hidden="true"></span></summary><div class="collapsible-body"><p class="muted">随 DSH 镜像提供，不占用额外共享存储，不允许卸载；可为指定用户批量启用或停用。</p><input id="builtin-filter" type="search" aria-label="搜索官方插件" placeholder="搜索插件 ID 或模块名"><div id="builtin-plugins"></div></div></details></section>
-  <section><h2>已导入的共享插件</h2><div id="plugins"></div></section>
+  </div><p class="muted">联网导入会先从 Registry 读取全部版本，选择后才下载该精确版本。插件实体只保存一份；仅允许白名单内的原生依赖执行构建脚本。</p></section>
+  <section class="collapsible-section"><details id="builtin-details"><summary><h2>官方内置插件 <span id="builtin-count" class="section-count"></span></h2><span class="collapse-label" aria-hidden="true"></span></summary><div class="collapsible-body"><p class="muted">随 DSH 镜像提供，不占用额外共享存储，不允许卸载；点击启用或停用后在弹窗中选择目标用户。</p><input id="builtin-filter" type="search" aria-label="搜索官方插件" placeholder="搜索插件 ID 或模块名"><div id="builtin-plugins"></div></div></details></section>
+  <section><h2>已导入的共享插件</h2><p class="muted">插件文件全局共享；点击操作按钮后在弹窗中查看各用户当前状态并选择批量操作目标。</p><div id="plugins"></div></section>
   <section><h2>最近任务</h2><div id="jobs"></div></section>
 </main>
-<script src="/gateway-assets/plugins.js?v=3"></script></body></html>
+<dialog id="assignment-dialog" aria-labelledby="assignment-title">
+  <form id="assignment-form" method="dialog">
+    <div class="dialog-header"><div><h2 id="assignment-title">选择目标用户</h2><p id="assignment-description" class="muted"></p></div><button id="assignment-close" type="button" aria-label="关闭">×</button></div>
+    <div class="user-picker-toolbar"><input id="assignment-filter" type="search" placeholder="搜索用户名" aria-label="搜索用户"><button id="select-filtered" type="button">全选当前结果</button><button id="select-enabled" type="button">选择所有启用用户</button><button id="clear-selected" type="button">清空</button></div>
+    <div class="picker-summary"><span id="selected-count">已选择 0 个用户</span><label><input id="assignment-future" type="checkbox"> 同步应用到后续新用户</label></div>
+    <div id="assignment-users" class="user-picker" role="group" aria-label="目标用户"></div>
+    <div class="dialog-actions"><button id="assignment-cancel" type="button">取消</button><button id="assignment-submit" class="primary" type="submit" disabled>执行批量操作</button></div>
+  </form>
+</dialog>
+<script src="/gateway-assets/plugins.js?v=5"></script></body></html>

@@ -159,6 +159,21 @@ class ManagementWebAssetTests(unittest.TestCase):
         self.assertIn("localStorage.setItem", script)
         self.assertIn("details[open] .collapse-label", stylesheet)
 
+    def test_plugin_management_uses_per_user_batch_dialog(self) -> None:
+        html = (TEMPLATE_ROOT / "plugins.html").read_text()
+        script = (MANAGEMENT_STATIC_ROOT / "plugins.js").read_text()
+        stylesheet = (MANAGEMENT_STATIC_ROOT / "plugins.css").read_text()
+
+        self.assertIn('<dialog id="assignment-dialog"', html)
+        self.assertIn('id="assignment-users"', html)
+        self.assertIn("选择所有启用用户", html)
+        self.assertIn("function openAssignmentDialog", script)
+        self.assertIn("function renderUserPicker", script)
+        self.assertIn("usernames:[...selectedUsers]", script)
+        self.assertIn("selectedVersions", script)
+        self.assertIn("dialog::backdrop", stylesheet)
+        self.assertIn(".user-option", stylesheet)
+
     def test_injected_upload_widget_is_also_packaged_as_web_assets(self) -> None:
         widget = UPLOAD_WIDGET.decode()
         self.assertEqual(widget, (TEMPLATE_ROOT / "upload-widget.html").read_text())

@@ -28,9 +28,36 @@
     table { width: 100%; border-collapse: collapse; margin-top: 10px; }
     th, td { text-align: left; padding: 11px 9px; border-top: 1px solid #303746; vertical-align: middle; }
     th { color: #aeb9d2; font-size: 12px; }
+    .summary-cell { white-space: nowrap; color: #b9c8f6; }
+    dialog { width: min(720px, calc(100vw - 28px)); max-height: min(780px, calc(100vh - 28px)); padding: 0; border: 1px solid #465066; border-radius: 14px; background: #181d27; color: #f4f6fb; box-shadow: 0 24px 80px #000a; }
+    dialog::backdrop { background: #080a10b8; backdrop-filter: blur(3px); }
+    #assignment-form { display: block; }
+    .dialog-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 18px 20px 12px; border-bottom: 1px solid #303746; }
+    .dialog-header h2 { margin-bottom: 5px; }
+    #assignment-close { padding: 3px 10px; border: 0; background: transparent; font-size: 24px; line-height: 1; }
+    .user-picker-toolbar { display: flex; gap: 8px; flex-wrap: wrap; padding: 14px 20px 10px; }
+    .user-picker-toolbar input { flex: 1 1 190px; }
+    .user-picker-toolbar button { padding: 7px 9px; font-size: 12px; }
+    .picker-summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 20px 10px; color: #b9c8f6; font-size: 13px; flex-wrap: wrap; }
+    .user-picker { max-height: min(430px, 50vh); overflow-y: auto; margin: 0 20px; border: 1px solid #303746; border-radius: 10px; }
+    .user-option { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 11px 13px; border-top: 1px solid #303746; cursor: pointer; }
+    .user-option:first-child { border-top: 0; }
+    .user-option:hover { background: #1e2532; }
+    .user-option input { margin: 0; width: 17px; height: 17px; }
+    .user-identity strong, .user-identity small { display: block; }
+    .user-identity small { margin-top: 3px; font-size: 10px; }
+    .account-on { color: #8da0c9; } .account-off { color: #ffbaba; }
+    .picker-status { padding: 4px 8px; border-radius: 999px; font-size: 11px; white-space: nowrap; }
+    .picker-status.status-enabled { color: #90edbd; background: #174c37; }
+    .picker-status.status-disabled { color: #ccd5e8; background: #343b49; }
+    .picker-status.status-unassigned { color: #aeb9d2; border: 1px dashed #59647a; }
+    .picker-status.status-pending { color: #b9c8ff; background: #27416e; }
+    .picker-status.status-failed { color: #ffc0c0; background: #5a2929; }
+    .empty-picker { padding: 18px; margin: 0; }
+    .dialog-actions { display: flex; justify-content: flex-end; gap: 9px; padding: 14px 20px 18px; }
     .actions { display: flex; gap: 6px; flex-wrap: wrap; }
     .badge { padding: 3px 7px; border-radius: 999px; background: #27416e; font-size: 12px; }
     .ok { background: #174c37; } .bad { background: #5a2929; }
-    .builtin-default { display: block; color: #8da0c9; font-size: 11px; margin-top: 3px; }
+    .builtin-default { display: block; color: #8da0c9; font-size: 11px; margin-top: 5px; }
     .module-name { color: #b9c8f6; font-family: ui-monospace, monospace; font-size: 12px; overflow-wrap: anywhere; }
-    @media (max-width: 760px) { .hide-small { display:none; } main { width: calc(100vw - 20px); } .collapsible-section summary { padding: 16px; } .collapsible-body { padding: 0 16px 16px; } }
+    @media (max-width: 760px) { .hide-small { display:none; } main { width: calc(100vw - 20px); } .collapsible-section summary { padding: 16px; } .collapsible-body { padding: 0 16px 16px; } .user-picker { margin: 0 12px; } .user-picker-toolbar, .picker-summary { padding-left: 12px; padding-right: 12px; } .dialog-actions { padding: 12px; } }
