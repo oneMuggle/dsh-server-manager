@@ -1,39 +1,16 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from common.storage.users import RegistryError, list_users
 
 from ..dependencies import ApiToken
-from ..pages import admin_page
-from ..plugin_ui import plugin_admin_page
 from ..runtime import config
 from ..schemas.users import RegisteredUser, RegisteredUsers
-from ..services.auth import request_user, require_admin, user_role
+from ..services.auth import require_admin, user_role
 
 
 router = APIRouter()
-
-
-@router.get("/admin", response_class=HTMLResponse, include_in_schema=False)
-async def management_page(request: Request) -> Response:
-    user = request_user(request)
-    if not user:
-        return RedirectResponse("/login", status_code=303)
-    if user_role(user) != "admin":
-        raise HTTPException(status_code=403, detail="需要管理员权限")
-    return HTMLResponse(admin_page(), headers={"Cache-Control": "no-store"})
-
-
-@router.get("/admin/plugins", response_class=HTMLResponse, include_in_schema=False)
-async def plugin_management_page(request: Request) -> Response:
-    user = request_user(request)
-    if not user:
-        return RedirectResponse("/login", status_code=303)
-    if user_role(user) != "admin":
-        raise HTTPException(status_code=403, detail="需要管理员权限")
-    return HTMLResponse(plugin_admin_page(), headers={"Cache-Control": "no-store"})
 
 
 @router.get(

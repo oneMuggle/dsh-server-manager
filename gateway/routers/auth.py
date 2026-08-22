@@ -10,7 +10,6 @@ from common.security import hash_password, verify_password
 from common.storage.users import RegistryError, get_user
 
 from ..dependencies import ApiToken
-from ..pages import auth_page
 from ..runtime import config
 from ..schemas.auth import AuthenticatedUser, Credentials, CurrentUser
 from ..services.auth import (
@@ -21,6 +20,7 @@ from ..services.auth import (
     user_role,
 )
 from ..services.supervisor import SupervisorError, create_user
+from ..web.pages import auth_page
 
 
 router = APIRouter()

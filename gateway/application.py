@@ -8,7 +8,7 @@ from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
-from .routers import admin_users, auth, plugins, providers, proxy, uploads
+from .routers import auth, management, plugins, providers, proxy, uploads, users
 from .runtime import SWAGGER_UI_STATIC_DIR, config
 from .web import MANAGEMENT_STATIC_ROOT as MANAGEMENT_STATIC_DIR
 
@@ -72,7 +72,8 @@ def create_app() -> FastAPI:
         summary="健康检查",
     )
     application.include_router(auth.router)
-    application.include_router(admin_users.router)
+    application.include_router(management.router)
+    application.include_router(users.router)
     application.include_router(plugins.router)
     application.include_router(providers.router)
     application.include_router(uploads.router)

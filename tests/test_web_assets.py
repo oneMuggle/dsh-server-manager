@@ -3,11 +3,10 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 
-from gateway.pages import admin_page, auth_page
-from gateway.plugin_ui import plugin_admin_page
 from gateway.runtime import SWAGGER_UI_STATIC_DIR
-from gateway.upload_ui import UPLOAD_WIDGET
 from gateway.web import MANAGEMENT_STATIC_ROOT, STATIC_ROOT, TEMPLATE_ROOT
+from gateway.web.fragments import ADMIN_WIDGET, LOGOUT_WIDGET, UPLOAD_WIDGET
+from gateway.web.pages import admin_page, auth_page, plugin_admin_page
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -50,6 +49,23 @@ class ManagementWebAssetTests(unittest.TestCase):
         for asset in ("upload-widget.css", "upload-widget.js"):
             self.assertIn(f"/assets/{asset}", widget)
             self.assertTrue((MANAGEMENT_STATIC_ROOT / asset).is_file())
+
+    def test_injected_navigation_widgets_use_local_assets(self) -> None:
+        widgets = {
+            "admin-widget.html": ADMIN_WIDGET.decode(),
+            "logout-widget.html": LOGOUT_WIDGET.decode(),
+        }
+        for template, rendered in widgets.items():
+            with self.subTest(template=template):
+                self.assertEqual(rendered, (TEMPLATE_ROOT / template).read_text())
+
+        combined = (ADMIN_WIDGET + LOGOUT_WIDGET).decode()
+        self.assertIn('href="/admin"', combined)
+        for asset in ("proxy-widgets.css", "logout-widget.js"):
+            self.assertIn(f"/assets/{asset}", combined)
+            self.assertTrue((MANAGEMENT_STATIC_ROOT / asset).is_file())
+        self.assertNotIn("<style>", combined)
+        self.assertNotIn("fetch(", combined)
 
 
 if __name__ == "__main__":

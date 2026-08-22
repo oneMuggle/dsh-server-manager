@@ -17,11 +17,19 @@ from gateway.routers.auth import login
 from gateway.runtime import SWAGGER_UI_STATIC_DIR, config
 from gateway.schemas.auth import Credentials
 from gateway.services.auth import parse_session
-from gateway.pages import admin_page, auth_page
 from gateway.web import MANAGEMENT_STATIC_ROOT
+from gateway.web.fragments import ADMIN_WIDGET, LOGOUT_WIDGET
+from gateway.web.pages import admin_page, auth_page
 
 
 class ProxyTransformTests(unittest.TestCase):
+    def test_injected_controls_use_local_assets_without_inline_code(self) -> None:
+        controls = ADMIN_WIDGET + LOGOUT_WIDGET
+        self.assertIn(b"/assets/proxy-widgets.css?v=1", controls)
+        self.assertIn(b"/assets/logout-widget.js?v=1", controls)
+        self.assertNotIn(b"<style>", controls)
+        self.assertNotIn(b"fetch(", controls)
+
     def test_html_injects_compatibility_script_and_cache_buster(self) -> None:
         original = (
             b'<html><head></head><body><script src="/plugins/@deepseek-ai/'
@@ -35,7 +43,7 @@ class ProxyTransformTests(unittest.TestCase):
         self.assertIn(b'/assets/upload-widget.js', transformed)
         self.assertIn("上传到当前目录".encode(), transformed)
         self.assertIn("退出登录".encode(), transformed)
-        self.assertIn(b"/api/gateway/v1/auth/logout", transformed)
+        self.assertIn(b"/assets/logout-widget.js", transformed)
         self.assertNotIn("管理后台".encode(), transformed)
 
     def test_admin_html_includes_management_entry(self) -> None:

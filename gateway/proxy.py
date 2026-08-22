@@ -10,7 +10,7 @@ from fastapi import Request, WebSocket
 from fastapi.responses import Response, StreamingResponse
 from starlette.websockets import WebSocketDisconnect
 
-from .upload_ui import ADMIN_WIDGET, LOGOUT_WIDGET, UPLOAD_WIDGET
+from .web.fragments import ADMIN_WIDGET, LOGOUT_WIDGET, UPLOAD_WIDGET
 
 HOP_BY_HOP = {
     "connection",

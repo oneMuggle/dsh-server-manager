@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .web import render_template
+from . import render_template
 
 
 def auth_page(mode: str) -> str:
@@ -11,3 +11,7 @@ def auth_page(mode: str) -> str:
 
 def admin_page() -> str:
     return render_template("admin.html")
+
+
+def plugin_admin_page() -> str:
+    return render_template("plugins.html")

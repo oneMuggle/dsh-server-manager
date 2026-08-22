@@ -8,7 +8,7 @@ import pwd
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
-from gateway.plugin_ui import plugin_admin_page
+from gateway.web.pages import plugin_admin_page
 from gateway.web import MANAGEMENT_STATIC_ROOT
 from common.storage.assignments import (
     apply_plugin_defaults,
