@@ -102,30 +102,49 @@ Compose 从仓库根目录的 `.env` 读取配置；可从 `.env.example` 复制
 
 ## 注册和登录 API
 
-注册：
+面向 API 调用和二次开发时应使用 Bearer Token；Cookie 只用于浏览器管理界面和 DSH 页面会话。
+
+开放注册后，新用户可以通过 JSON 接口注册。响应中的 `accessToken` 可以直接用于后续 API 请求：
 
 ```sh
-curl -i -c cookies.txt \
+curl -sS \
   -H 'Content-Type: application/json' \
   -d '{"username":"alice","password":"change-me-123"}' \
   http://127.0.0.1:3081/api/v1/auth/registrations
 ```
 
-登录、查询当前账号和退出：
+已有用户推荐通过 OAuth2 Password 接口登录并获取 Bearer Token：
 
 ```sh
-curl -i -c cookies.txt \
-  -H 'Content-Type: application/json' \
-  -d '{"username":"alice","password":"change-me-123"}' \
-  http://127.0.0.1:3081/api/v1/auth/sessions
+curl -sS -X POST \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  --data-urlencode 'username=alice' \
+  --data-urlencode 'password=change-me-123' \
+  http://127.0.0.1:3081/api/v1/auth/token
+```
 
-curl -b cookies.txt http://127.0.0.1:3081/api/v1/auth/sessions/current
-curl -X DELETE -b cookies.txt http://127.0.0.1:3081/api/v1/auth/sessions/current
+响应格式：
+
+```json
+{
+  "access_token": "<signed-token>",
+  "token_type": "bearer",
+  "expires_in": 604800
+}
+```
+
+将返回的 `access_token` 放入 `Authorization` 请求头：
+
+```sh
+TOKEN='<signed-token>'
+curl \
+  -H "Authorization: Bearer ${TOKEN}" \
+  http://127.0.0.1:3081/api/v1/auth/sessions/current
 ```
 
 用户名长度为 3–24，只能使用小写字母、数字、下划线和连字符，且必须以字母开头；密码至少 8 个字符。
 
-注册和登录成功时，响应在设置原有 HttpOnly Cookie 的同时返回相同的 Bearer Token：
+浏览器登录页使用 `POST /api/v1/auth/sessions`。该接口会设置 HttpOnly Cookie，同时在响应中返回同一份 Bearer Token：
 
 ```json
 {
@@ -137,15 +156,7 @@ curl -X DELETE -b cookies.txt http://127.0.0.1:3081/api/v1/auth/sessions/current
 }
 ```
 
-二次开发可以通过 `Authorization` 请求头调用受保护的网关接口：
-
-```sh
-curl \
-  -H "Authorization: Bearer <signed-token>" \
-  http://127.0.0.1:3081/api/v1/auth/sessions/current
-```
-
-Bearer Token 与浏览器 Cookie 使用同一套签名、七天有效期和失效检查。用户被禁用或 `password_version` 变化后，两者都会失效；退出登录只清除浏览器 Cookie，不会单独撤销已经交给外部程序的 Bearer Token。
+Bearer Token 与浏览器 Cookie 使用同一套签名、七天有效期和失效检查。用户被停用或密码被重置后，两者都会失效。`DELETE /api/v1/auth/sessions/current` 只负责清除浏览器 Cookie；当前没有单独的 Bearer Token 撤销列表，API 客户端需要自行删除本地保存的 Token。
 
 用户数据使用 SQLite 存储，用户名、UID 和租户端口均有唯一索引，数据库文件位于 `docker/data/gateway/users.db`。
 
@@ -246,6 +257,6 @@ docker compose -f docker/compose.yml down
 感谢以下开源项目及其贡献者：
 
 - [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)：本项目构建、运行和管理的核心 Agent Harness；
-- [dsh-server-deployment](https://github.com/AnkoCD/dsh-server-deployment)：为多用户隔离、网关代理和容器化部署设计提供了重要参考。
+- [dsh-server-deployment](https://github.com/AnkoCD/dsh-server-deployment)：为多用户门户、基于 OS 账号的数据隔离、回环网关代理和文件访问边界提供了重要参考。
 
 DSM 是独立的社区部署与管理项目，不代表上述项目的官方生产部署方案。
