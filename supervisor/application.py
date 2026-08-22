@@ -7,6 +7,10 @@ import secrets
 from typing import Any
 
 from common.storage.assignments import apply_plugin_defaults
+from common.storage.builtin_plugins import (
+    apply_builtin_defaults,
+    get_builtin_plugin,
+)
 from common.storage.plugin_catalog import get_plugin_version
 from common.storage.plugin_jobs import create_job, unfinished_job_ids
 from common.storage.users import (
@@ -104,11 +108,13 @@ class Supervisor:
                 add_user(self.config.registry_path, user)
             except RegistryError as error:
                 raise RuntimeError("unable to persist user") from error
+            apply_plugin_defaults(self.config.registry_path, username)
+            apply_builtin_defaults(self.config.registry_path, username)
+            self.plugins.prepare_user_profile(user)
             self.tenants.start(user)
 
         ready = await self.tenants.wait_ready(username)
         if ready:
-            apply_plugin_defaults(self.config.registry_path, username)
             self._schedule_plugin_reconcile(username)
         return {
             "username": username,
@@ -290,6 +296,57 @@ class Supervisor:
             plugin_id=plugin_id,
             plugin_version_id=version_id,
             scope=persisted_scope,
+            usernames=usernames,
+        )
+        await self.plugins.enqueue(job_id)
+        return {"job_id": job_id, "status": "queued", "target_count": len(usernames)}
+
+    async def assign_builtin_plugin(self, request: dict[str, Any]) -> dict[str, Any]:
+        action = str(request.get("plugin_action", ""))
+        if action not in {"enable", "disable"}:
+            raise ValueError("官方内置插件只允许启用或停用")
+        entry_id = str(request.get("entry_id", ""))
+        builtin = get_builtin_plugin(self.config.registry_path, entry_id)
+        if builtin is None:
+            raise ValueError("官方内置插件不存在")
+        scope = request.get("scope")
+        if not isinstance(scope, dict):
+            raise ValueError("无效的用户范围")
+        registry = load_user_registry(self.config)
+        scope_type = str(scope.get("type", ""))
+        if scope_type == "all":
+            include_disabled = bool(scope.get("includeDisabledUsers", False))
+            usernames = [
+                username
+                for username, user in registry["users"].items()
+                if include_disabled or user.get("disabled") is not True
+            ]
+        elif scope_type == "users":
+            values = scope.get("usernames")
+            if not isinstance(values, list) or not all(isinstance(value, str) for value in values):
+                raise ValueError("无效的用户列表")
+            usernames = sorted(set(values))
+            if any(username not in registry["users"] for username in usernames):
+                raise ValueError("用户列表中包含不存在的用户")
+        else:
+            raise ValueError("无效的用户范围")
+        if not usernames:
+            raise ValueError("没有符合条件的用户")
+
+        job_id = secrets.token_hex(16)
+        create_job(
+            self.config.registry_path,
+            job_id=job_id,
+            kind="assign",
+            created_by=str(request.get("created_by", "admin")),
+            action=action,
+            package_name=entry_id,
+            scope={
+                "type": scope_type,
+                "includeDisabledUsers": bool(scope.get("includeDisabledUsers", False)),
+                "applyToFutureUsers": bool(request.get("apply_to_future_users", False)),
+                "builtinEntryId": entry_id,
+            },
             usernames=usernames,
         )
         await self.plugins.enqueue(job_id)

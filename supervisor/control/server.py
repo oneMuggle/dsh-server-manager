@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from common.contracts.control import (
+    AssignBuiltinPluginRequest,
     AssignPluginRequest,
     CreateUserRequest,
     DiscoverPluginVersionsRequest,
@@ -99,6 +100,8 @@ class ControlServer:
                         )
                     elif isinstance(request, AssignPluginRequest):
                         result = await self.owner.assign_plugin(request.model_dump())
+                    elif isinstance(request, AssignBuiltinPluginRequest):
+                        result = await self.owner.assign_builtin_plugin(request.model_dump())
                     else:
                         raise ValueError("unknown action")
                     response = success_response(**result)

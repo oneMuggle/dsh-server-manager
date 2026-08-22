@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 from common.contracts.control import (
     AssignPluginRequest,
+    AssignBuiltinPluginRequest,
     ControlRequestError,
     CreateUserRequest,
     UpdateUserRequest,
@@ -26,6 +27,7 @@ from gateway.routers.user.providers import create_custom_provider
 
 
 PUBLIC_RESPONSES = {
+    ("post", "/api/v1/plugins/builtins/jobs"): ["202", "422"],
     ("get", "/api/v1/plugins/jobs"): ["200", "422"],
     ("post", "/api/v1/plugins/jobs"): ["202", "422"],
     ("get", "/api/v1/plugins/jobs/{job_id}"): ["200", "422"],
@@ -66,6 +68,7 @@ SCHEMA_PROPERTIES = {
         "scope",
         "versionId",
     ],
+    "BuiltinPluginAssignment": ["action", "applyToFutureUsers", "entryId", "scope"],
     "PluginScope": ["includeDisabledUsers", "type", "usernames"],
     "RegisteredUser": ["created_at", "disabled", "role", "username"],
     "RegisteredUsers": ["users"],
@@ -129,6 +132,15 @@ TABLE_COLUMNS = {
         "started_at",
         "finished_at",
     ],
+    "builtin_plugins": [
+        "entry_id",
+        "module_name",
+        "source_bundle",
+        "default_enabled",
+        "updated_at",
+    ],
+    "user_builtin_plugins": ["username", "entry_id", "enabled", "updated_at"],
+    "builtin_plugin_defaults": ["entry_id", "enabled", "updated_at"],
 }
 
 
@@ -215,7 +227,7 @@ class SqliteContractTests(unittest.TestCase):
             database = Path(temporary) / "users.db"
             initialize_registry(database)
             with sqlite3.connect(database) as connection:
-                self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 2)
+                self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 3)
                 for table, expected in TABLE_COLUMNS.items():
                     with self.subTest(table=table):
                         columns = [
@@ -303,6 +315,7 @@ class TypedControlContractTests(unittest.IsolatedAsyncioTestCase):
             ({"action": "plugin_discover_versions", "package_name": "pkg"}, "DiscoverPluginVersionsRequest"),
             ({"action": "plugin_offline_import", "spool_name": "a.plugin.tgz", "created_by": "admin"}, "ImportOfflinePluginRequest"),
             ({"action": "plugin_assignment", "plugin_action": "install", "plugin_id": 1, "plugin_version_id": 2, "scope": {"type": "all"}, "enabled_after_install": True, "apply_to_future_users": False, "created_by": "admin"}, AssignPluginRequest),
+            ({"action": "builtin_plugin_assignment", "plugin_action": "disable", "entry_id": "tool-web", "scope": {"type": "all"}, "apply_to_future_users": True, "created_by": "admin"}, AssignBuiltinPluginRequest),
         ]
         for payload, expected in fixtures:
             with self.subTest(action=payload["action"]):

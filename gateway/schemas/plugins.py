@@ -29,3 +29,12 @@ class PluginAssignment(BaseModel):
     scope: PluginScope
     enabled_after_install: bool = Field(default=True, alias="enabledAfterInstall")
     apply_to_future_users: bool = Field(default=False, alias="applyToFutureUsers")
+
+
+class BuiltinPluginAssignment(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    action: Literal["enable", "disable"]
+    entry_id: str = Field(alias="entryId", min_length=1, max_length=128)
+    scope: PluginScope
+    apply_to_future_users: bool = Field(default=False, alias="applyToFutureUsers")

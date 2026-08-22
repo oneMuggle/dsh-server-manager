@@ -73,6 +73,7 @@ class TenantManager:
                 "/usr/local/bin/node",
                 self.harness_cli,
                 "web",
+                "--patch", str(state / "dsm-builtins.patch.yml"),
                 "--no-open",
                 "--port", str(port),
                 cwd=workspace,

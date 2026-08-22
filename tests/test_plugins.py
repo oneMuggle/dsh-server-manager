@@ -5,10 +5,12 @@ import tempfile
 import unittest
 import os
 import pwd
+from pydantic import ValidationError
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 from gateway.web.pages import plugin_admin_page
+from gateway.schemas.plugins import BuiltinPluginAssignment
 from gateway.web import MANAGEMENT_STATIC_ROOT
 from common.storage.assignments import (
     apply_plugin_defaults,
@@ -16,6 +18,13 @@ from common.storage.assignments import (
     set_user_plugin,
 )
 from common.storage.plugin_catalog import list_plugins, register_plugin_version
+from common.storage.builtin_plugins import (
+    apply_builtin_defaults,
+    list_builtin_plugins,
+    replace_builtin_catalog,
+    set_builtin_default,
+    set_user_builtin_plugin,
+)
 from common.storage.plugin_jobs import create_job, get_job
 from common.storage.users import add_user, initialize_registry, replace_registry
 from supervisor.plugins import PluginOperationError, SharedPluginManager
@@ -24,6 +33,7 @@ from supervisor.plugins.commands import PluginCommandRunner
 from supervisor.plugins.installer import installed_package
 from supervisor.plugins.packages import SharedPackageRepository
 from supervisor.plugins.profile import apply_profile
+from supervisor.plugins.builtins import parse_builtin_catalog, write_builtin_overlay
 from supervisor.plugins.registry import (
     parse_version_metadata,
     validate_package_name,
@@ -117,6 +127,31 @@ class PluginStoreTests(unittest.TestCase):
         self.assertEqual(job["scope"], {"type": "all"})
         self.assertEqual([item["username"] for item in job["items"]], ["alice", "bob"])
 
+    def test_builtin_catalog_reports_effective_user_state(self) -> None:
+        replace_builtin_catalog(
+            self.database,
+            [{"entryId": "tool-web", "moduleName": "@deepseek-ai/dsh-tool-web", "sourceBundle": "@deepseek-ai/dsh-base", "defaultEnabled": True}],
+        )
+        set_user_builtin_plugin(self.database, "alice", "tool-web", False)
+        plugin = list_builtin_plugins(self.database)[0]
+        self.assertEqual(plugin["entryId"], "tool-web")
+        self.assertEqual(plugin["enabledUsers"], 1)
+        self.assertEqual(plugin["users"], [
+            {"username": "alice", "enabled": False},
+            {"username": "bob", "enabled": True},
+        ])
+
+    def test_builtin_future_default_is_copied_to_new_user(self) -> None:
+        replace_builtin_catalog(
+            self.database,
+            [{"entryId": "tool-web", "moduleName": "pkg", "sourceBundle": "base", "defaultEnabled": True}],
+        )
+        set_builtin_default(self.database, "tool-web", False)
+        self.assertEqual(apply_builtin_defaults(self.database, "bob"), 1)
+        plugin = list_builtin_plugins(self.database)[0]
+        bob = next(item for item in plugin["users"] if item["username"] == "bob")
+        self.assertFalse(bob["enabled"])
+
 
 class PluginInputTests(unittest.TestCase):
     def test_scoped_and_unscoped_npm_names_are_accepted(self) -> None:
@@ -155,6 +190,51 @@ class PluginInputTests(unittest.TestCase):
         self.assertIn("/api/v1/auth/sessions/current", script)
         self.assertIn("发现版本", page)
         self.assertIn("导入所选版本", page)
+        self.assertIn("官方内置插件", page)
+        self.assertIn("搜索官方插件", page)
+        self.assertIn("builtinPlugins", script)
+
+    def test_builtin_catalog_parser_reads_effective_default_config(self) -> None:
+        catalog = parse_builtin_catalog(
+            "# == @deepseek-ai/dsh-base\n"
+            "- id: tool-web\n"
+            "  name: '@deepseek-ai/dsh-tool-web'\n"
+            "# == @deepseek-ai/dsh-base, patched by @deepseek-ai/dsh-web-app\n"
+            "- id: hmr\n"
+            "  name: '@deepseek-ai/cordis-plugin-hmr'\n"
+            "  disabled: true\n"
+        )
+        self.assertEqual(catalog, [
+            {"entryId": "tool-web", "moduleName": "@deepseek-ai/dsh-tool-web", "sourceBundle": "@deepseek-ai/dsh-base", "defaultEnabled": True},
+            {"entryId": "hmr", "moduleName": "@deepseek-ai/cordis-plugin-hmr", "sourceBundle": "@deepseek-ai/dsh-base", "defaultEnabled": False},
+        ])
+
+    def test_builtin_assignment_rejects_uninstall(self) -> None:
+        with self.assertRaises(ValidationError):
+            BuiltinPluginAssignment.model_validate({
+                "action": "uninstall",
+                "entryId": "tool-web",
+                "scope": {"type": "all"},
+            })
+
+    def test_builtin_overlay_is_separate_from_the_user_patch(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            state = Path(temporary)
+            profile = state / "profiles" / "web"
+            profile.mkdir(parents=True)
+            user_patch = profile / "cordis.patch.yml"
+            user_patch.write_text("- id: custom\n  disabled: true\n", encoding="utf-8")
+            overlay = write_builtin_overlay(state, [
+                {"entryId": "tool-web", "enabled": False, "defaultEnabled": True},
+                {"entryId": "hmr", "enabled": True, "defaultEnabled": False},
+            ])
+            self.assertEqual(
+                overlay.read_text(encoding="utf-8"),
+                "# Managed by DSM. Manual changes will be replaced.\n"
+                "- id: \"tool-web\"\n  disabled: true\n"
+                "- id: \"hmr\"\n  disabled: false\n",
+            )
+            self.assertEqual(user_patch.read_text(encoding="utf-8"), "- id: custom\n  disabled: true\n")
 
 
 class PluginVersionDiscoveryTests(unittest.IsolatedAsyncioTestCase):
@@ -200,6 +280,27 @@ class PluginVersionDiscoveryTests(unittest.IsolatedAsyncioTestCase):
             self.assertIsInstance(manager.commands, PluginCommandRunner)
             self.assertIsInstance(manager.packages, SharedPackageRepository)
             self.assertEqual(manager.packages.releases, root / "state/plugins/releases")
+
+    async def test_shared_profile_change_does_not_skip_builtin_overlay(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+
+            async def restart(_: str) -> bool:
+                return True
+
+            manager = SharedPluginManager(
+                database_path=root / "users.db",
+                state_root=root / "state",
+                users_root=root / "users",
+                harness_cli="/unused",
+                restart_tenant=restart,
+            )
+            with (
+                patch("supervisor.plugins.manager.apply_profile", return_value=True),
+                patch.object(manager, "_apply_builtin_profile", return_value=False) as builtin,
+            ):
+                self.assertTrue(manager._apply_profile(user("alice", 20000, 3101)))
+            builtin.assert_called_once()
 
     async def test_registry_versions_and_latest_are_returned(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

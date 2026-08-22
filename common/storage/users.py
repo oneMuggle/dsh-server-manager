@@ -9,7 +9,7 @@ from .database import read_connection, write_connection
 from .plugin_catalog import create_plugin_schema
 
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 class RegistryError(RuntimeError):
@@ -85,7 +85,7 @@ def initialize_registry(path: Path) -> None:
     try:
         with write_connection(path) as connection:
             version = int(connection.execute("PRAGMA user_version").fetchone()[0])
-            if version not in {0, 1, SCHEMA_VERSION}:
+            if version not in {0, 1, 2, SCHEMA_VERSION}:
                 raise RegistryError(f"unsupported user database version: {version}")
             _create_schema(connection)
     except sqlite3.DatabaseError as error:

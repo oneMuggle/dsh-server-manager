@@ -161,7 +161,7 @@ Bearer Token 与浏览器 Cookie 使用同一套签名、七天有效期和失�
 
 Swagger UI 位于 `/docs`，OpenAPI 文档位于 `/openapi.json`。Swagger UI 的 JavaScript、CSS 和图标均随网关镜像提供，不依赖公网 CDN，可在完全离线的局域网中使用。在同一浏览器登录后打开 Swagger，可以使用当前登录 Cookie 调试受保护接口。
 
-## 共享插件管理
+## 插件管理
 
 管理员访问 `/admin/plugins` 可以管理共享插件：
 
@@ -169,6 +169,8 @@ Swagger UI 位于 `/docs`，OpenAPI 文档位于 `/openapi.json`。Swagger UI �
 - 离线环境上传 npm `.tgz` 包；离线包必须包含运行所需内容，且依赖已经内置或存在于离线包中；
 - 对全部启用用户或指定用户批量执行安装、卸载、启用和停用；
 - 可把当前策略设为新用户默认策略，并在任务列表中查看每个操作的执行状态。
+
+管理页也会自动列出当前 DSH 镜像提供的官方 Cordis 插件。官方插件直接使用镜像内文件，不进入共享 release 目录，也不能执行安装或卸载；管理员只能按用户或批量启用、停用，并可将状态应用到后续新用户。DSM 把这些差异写入每个用户独立的 `dsm-builtins.patch.yml` 覆盖层，不修改用户自己的 `cordis.patch.yml`。批量接口为 `POST /api/v1/plugins/builtins/jobs`，其 `action` 只接受 `enable` 或 `disable`。
 
 插件的每个版本只在 `docker/data/plugins/releases/` 保存一份只读实体。用户目录中不复制插件文件，SQLite 只记录用户与共享版本的关联和启用状态；启用时由用户 profile 引用容器内的版本化解析别名，并在 `profiles/node_modules` 创建指向共享 release 的包名软链接，供插件 patch 解析运行时代码。因此同一版本不会随用户数量增加而重复占用磁盘，不同版本也可以同时服务不同用户。
 

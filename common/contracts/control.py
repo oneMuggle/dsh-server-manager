@@ -74,6 +74,15 @@ class AssignPluginRequest(_ControlRequest):
     created_by: str = "admin"
 
 
+class AssignBuiltinPluginRequest(_ControlRequest):
+    action: Literal["builtin_plugin_assignment"]
+    plugin_action: Literal["enable", "disable"]
+    entry_id: str
+    scope: dict[str, Any]
+    apply_to_future_users: bool = False
+    created_by: str = "admin"
+
+
 ControlRequest = Annotated[
     Union[
         CreateUserRequest,
@@ -84,6 +93,7 @@ ControlRequest = Annotated[
         DiscoverPluginVersionsRequest,
         ImportOfflinePluginRequest,
         AssignPluginRequest,
+        AssignBuiltinPluginRequest,
     ],
     Field(discriminator="action"),
 ]
@@ -108,6 +118,7 @@ def error_response(code: str, message: str) -> dict[str, Any]:
 
 __all__ = [
     "AssignPluginRequest",
+    "AssignBuiltinPluginRequest",
     "ControlRequest",
     "ControlRequestError",
     "CreateUserRequest",

@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 from .assignments import restore_user_assignment
+from .builtins import discover_builtin_catalog, write_builtin_overlay
 from .commands import PluginCommandRunner
 from .errors import PluginOperationError
 from .packages import SharedPackageRepository
@@ -16,6 +17,14 @@ from common.storage.assignments import (
     remove_user_plugin,
     set_plugin_default,
     set_user_plugin,
+)
+from common.storage.builtin_plugins import (
+    effective_builtin_states,
+    get_user_builtin_plugin,
+    remove_user_builtin_plugin,
+    replace_builtin_catalog,
+    set_builtin_default,
+    set_user_builtin_plugin,
 )
 from common.storage.plugin_catalog import (
     get_plugin_version,
@@ -53,6 +62,10 @@ class SharedPluginManager:
 
     def initialize(self) -> None:
         self.packages.initialize()
+        replace_builtin_catalog(
+            self.database_path,
+            discover_builtin_catalog(self.harness_cli),
+        )
 
     async def start(self, queued_job_ids: list[str]) -> None:
         self.worker = asyncio.create_task(self._worker(), name="plugin-worker")
@@ -72,14 +85,15 @@ class SharedPluginManager:
 
     def prepare_user_profile(self, user: dict[str, Any]) -> bool:
         """Apply persisted policy before a tenant process starts."""
+        builtin_changed = self._apply_builtin_profile(user)
         try:
-            changed = self._apply_profile(user)
+            changed = apply_profile(self, user, PluginOperationError)
         except PluginOperationError as error:
             if "尚未初始化" in str(error):
-                return False
+                return builtin_changed
             raise
         mark_user_plugins_ready(self.database_path, str(user["username"]))
-        return changed
+        return changed or builtin_changed
 
     async def reconcile_user(self, username: str) -> bool:
         """Apply defaults/persisted policy after a new profile has been created."""
@@ -166,19 +180,31 @@ class SharedPluginManager:
         )
         if bool(job["scope"].get("applyToFutureUsers")):
             action = str(job["action"])
-            version_id = int(job["plugin_version_id"] or 0)
-            set_plugin_default(
-                self.database_path,
-                int(job["plugin_id"]),
-                version_id,
-                assigned=action != "uninstall",
-                enabled=action == "enable" or (
-                    action == "install"
-                    and bool(job["scope"].get("enabledAfterInstall", True))
-                ),
-            )
+            builtin_entry_id = job["scope"].get("builtinEntryId")
+            if builtin_entry_id:
+                set_builtin_default(
+                    self.database_path,
+                    str(builtin_entry_id),
+                    action == "enable",
+                )
+            else:
+                version_id = int(job["plugin_version_id"] or 0)
+                set_plugin_default(
+                    self.database_path,
+                    int(job["plugin_id"]),
+                    version_id,
+                    assigned=action != "uninstall",
+                    enabled=action == "enable" or (
+                        action == "install"
+                        and bool(job["scope"].get("enabledAfterInstall", True))
+                    ),
+                )
 
     async def _apply_user_action(self, job: dict[str, Any], username: str) -> None:
+        builtin_entry_id = job["scope"].get("builtinEntryId")
+        if builtin_entry_id:
+            await self._apply_builtin_action(job, username, str(builtin_entry_id))
+            return
         lock = self.user_locks.setdefault(username, asyncio.Lock())
         async with lock:
             user = get_user(self.database_path, username)
@@ -244,11 +270,61 @@ class SharedPluginManager:
                 self._apply_profile(user)
                 raise
 
+    async def _apply_builtin_action(
+        self,
+        job: dict[str, Any],
+        username: str,
+        entry_id: str,
+    ) -> None:
+        lock = self.user_locks.setdefault(username, asyncio.Lock())
+        async with lock:
+            user = get_user(self.database_path, username)
+            if user is None:
+                raise PluginOperationError("用户不存在")
+            action = str(job["action"])
+            if action not in {"enable", "disable"}:
+                raise PluginOperationError("官方内置插件只允许启用或停用")
+            previous = get_user_builtin_plugin(self.database_path, username, entry_id)
+            try:
+                set_user_builtin_plugin(
+                    self.database_path,
+                    username,
+                    entry_id,
+                    action == "enable",
+                )
+                changed = self._apply_profile(user)
+                await self._validate_profile(user)
+                if changed and user.get("disabled") is not True:
+                    if not await self.restart_tenant(username):
+                        raise PluginOperationError("插件配置已写入，但用户服务重启失败")
+            except Exception:
+                if previous is None:
+                    remove_user_builtin_plugin(self.database_path, username, entry_id)
+                else:
+                    set_user_builtin_plugin(
+                        self.database_path, username, entry_id, previous
+                    )
+                self._apply_profile(user)
+                raise
+
     def _sync_package_links(self, user: dict[str, Any]) -> bool:
         return sync_package_links(self, user, PluginOperationError)
 
     def _apply_profile(self, user: dict[str, Any]) -> bool:
-        return apply_profile(self, user, PluginOperationError)
+        shared_changed = apply_profile(self, user, PluginOperationError)
+        builtin_changed = self._apply_builtin_profile(user)
+        return shared_changed or builtin_changed
+
+    def _apply_builtin_profile(self, user: dict[str, Any]) -> bool:
+        username = str(user["username"])
+        state_root = self.users_root / username / "state"
+        path = state_root / "dsm-builtins.patch.yml"
+        before = path.read_bytes() if path.is_file() else None
+        overlay = write_builtin_overlay(
+            state_root,
+            effective_builtin_states(self.database_path, username),
+        )
+        return before != overlay.read_bytes()
 
     async def _validate_profile(self, user: dict[str, Any]) -> None:
         username = str(user["username"])
@@ -269,6 +345,8 @@ class SharedPluginManager:
             self.harness_cli,
             "--profile",
             "web",
+            "--patch",
+            str(state / "dsm-builtins.patch.yml"),
             "--dump-config",
         ]
         await self.commands.run(command, cwd=workspace, timeout=60)

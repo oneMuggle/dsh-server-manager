@@ -4,10 +4,10 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>插件管理 · DeepSeek Harness</title>
-  <link rel="stylesheet" href="/gateway-assets/plugins.css?v=1">
+  <link rel="stylesheet" href="/gateway-assets/plugins.css?v=2">
 </head>
 <body><main>
-  <header><div><h1>共享插件管理</h1><div id="message">正在加载…</div></div>
+  <header><div><h1>插件管理</h1><div id="message">正在加载…</div></div>
     <nav><a href="/admin">用户管理</a><a href="/">返回 DSH</a><button id="refresh" class="primary">刷新</button><button id="logout">退出登录</button></nav>
   </header>
   <section><h2>导入插件</h2><div class="row">
@@ -17,7 +17,9 @@
   <section><h2>插件与用户策略</h2><div class="row">
     <label>目标 <select id="target"><option value="all">所有启用用户</option></select></label>
     <label><input id="future" type="checkbox"> 同步应用到后续新用户</label>
-  </div><div id="plugins"></div></section>
+  </div></section>
+  <section><h2>官方内置插件</h2><p class="muted">随 DSH 镜像提供，不占用额外共享存储，不允许卸载；可为指定用户批量启用或停用。</p><input id="builtin-filter" type="search" aria-label="搜索官方插件" placeholder="搜索插件 ID 或模块名"><div id="builtin-plugins"></div></section>
+  <section><h2>已导入的共享插件</h2><div id="plugins"></div></section>
   <section><h2>最近任务</h2><div id="jobs"></div></section>
 </main>
-<script src="/gateway-assets/plugins.js?v=1"></script></body></html>
+<script src="/gateway-assets/plugins.js?v=2"></script></body></html>

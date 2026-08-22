@@ -175,3 +175,26 @@ async def assign_plugin(
         },
         timeout=15,
     )
+
+
+async def assign_builtin_plugin(
+    socket_path: Path,
+    *,
+    plugin_action: str,
+    entry_id: str,
+    scope: dict[str, Any],
+    apply_to_future_users: bool,
+    created_by: str,
+) -> dict[str, Any]:
+    return await _request(
+        socket_path,
+        {
+            "action": "builtin_plugin_assignment",
+            "plugin_action": plugin_action,
+            "entry_id": entry_id,
+            "scope": scope,
+            "apply_to_future_users": apply_to_future_users,
+            "created_by": created_by,
+        },
+        timeout=15,
+    )

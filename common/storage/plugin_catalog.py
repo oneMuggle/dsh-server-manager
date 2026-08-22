@@ -79,6 +79,28 @@ def create_plugin_schema(connection: sqlite3.Connection) -> None:
             PRIMARY KEY(job_id, username)
         );
 
+        CREATE TABLE IF NOT EXISTS builtin_plugins (
+            entry_id TEXT PRIMARY KEY,
+            module_name TEXT NOT NULL,
+            source_bundle TEXT NOT NULL,
+            default_enabled INTEGER NOT NULL CHECK (default_enabled IN (0, 1)),
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS user_builtin_plugins (
+            username TEXT NOT NULL REFERENCES users(username) ON DELETE CASCADE,
+            entry_id TEXT NOT NULL REFERENCES builtin_plugins(entry_id) ON DELETE CASCADE,
+            enabled INTEGER NOT NULL CHECK (enabled IN (0, 1)),
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY(username, entry_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS builtin_plugin_defaults (
+            entry_id TEXT PRIMARY KEY REFERENCES builtin_plugins(entry_id) ON DELETE CASCADE,
+            enabled INTEGER NOT NULL CHECK (enabled IN (0, 1)),
+            updated_at TEXT NOT NULL
+        );
+
         CREATE INDEX IF NOT EXISTS plugin_versions_plugin_idx
             ON plugin_versions(plugin_id, created_at);
         CREATE INDEX IF NOT EXISTS user_plugins_state_idx
@@ -87,6 +109,8 @@ def create_plugin_schema(connection: sqlite3.Connection) -> None:
             ON plugin_jobs(created_at DESC);
         CREATE INDEX IF NOT EXISTS plugin_job_items_status_idx
             ON plugin_job_items(job_id, status);
+        CREATE INDEX IF NOT EXISTS user_builtin_plugins_state_idx
+            ON user_builtin_plugins(entry_id, enabled);
         """
     )
 
