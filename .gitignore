@@ -1,7 +1,6 @@
 .env
 .venv/
 
-data/*
-!data/.gitkeep
+data/
 __pycache__/
 *.pyc
