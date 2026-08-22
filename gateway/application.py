@@ -59,7 +59,7 @@ def create_app() -> FastAPI:
         name="swagger-ui-static",
     )
     application.mount(
-        "/assets",
+        "/gateway-assets",
         StaticFiles(directory=MANAGEMENT_STATIC_DIR),
         name="management-static",
     )

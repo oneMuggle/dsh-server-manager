@@ -31,8 +31,8 @@ from gateway.web.pages import admin_page, auth_page
 class ProxyTransformTests(unittest.TestCase):
     def test_injected_controls_use_local_assets_without_inline_code(self) -> None:
         controls = ADMIN_WIDGET + LOGOUT_WIDGET
-        self.assertIn(b"/assets/proxy-widgets.css?v=1", controls)
-        self.assertIn(b"/assets/logout-widget.js?v=1", controls)
+        self.assertIn(b"/gateway-assets/proxy-widgets.css?v=1", controls)
+        self.assertIn(b"/gateway-assets/logout-widget.js?v=1", controls)
         self.assertNotIn(b"<style>", controls)
         self.assertNotIn(b"fetch(", controls)
 
@@ -45,11 +45,11 @@ class ProxyTransformTests(unittest.TestCase):
         self.assertIn(UUID_SHIM, transformed)
         self.assertIn(b"client.js?lan=2&rev=abc", transformed)
         self.assertIn("上传文件".encode(), transformed)
-        self.assertIn(b'/assets/upload-widget.css', transformed)
-        self.assertIn(b'/assets/upload-widget.js', transformed)
+        self.assertIn(b'/gateway-assets/upload-widget.css', transformed)
+        self.assertIn(b'/gateway-assets/upload-widget.js', transformed)
         self.assertIn("上传到当前目录".encode(), transformed)
         self.assertIn("退出登录".encode(), transformed)
-        self.assertIn(b"/assets/logout-widget.js", transformed)
+        self.assertIn(b"/gateway-assets/logout-widget.js", transformed)
         self.assertNotIn("管理后台".encode(), transformed)
 
     def test_admin_html_includes_management_entry(self) -> None:
