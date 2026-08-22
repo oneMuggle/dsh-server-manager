@@ -18,9 +18,11 @@ from common.storage.assignments import (
 from common.storage.plugin_catalog import list_plugins, register_plugin_version
 from common.storage.plugin_jobs import create_job, get_job
 from common.storage.users import add_user, initialize_registry, replace_registry
-from supervisor.plugins.manager import PluginOperationError, SharedPluginManager
+from supervisor.plugins import PluginOperationError, SharedPluginManager
 from supervisor.plugins.assignments import restore_user_assignment
+from supervisor.plugins.commands import PluginCommandRunner
 from supervisor.plugins.installer import installed_package
+from supervisor.plugins.packages import SharedPackageRepository
 from supervisor.plugins.profile import apply_profile
 from supervisor.plugins.registry import (
     parse_version_metadata,
@@ -156,6 +158,49 @@ class PluginInputTests(unittest.TestCase):
 
 
 class PluginVersionDiscoveryTests(unittest.IsolatedAsyncioTestCase):
+    async def test_invalid_install_result_is_a_plugin_operation_error(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            state_root = root / "state"
+            commands = PluginCommandRunner(state_root / "plugins")
+            repository = SharedPackageRepository(
+                database_path=root / "users.db",
+                state_root=state_root,
+                commands=commands,
+            )
+            staging = root / "staging"
+            staging.mkdir()
+            (staging / "package.json").write_text(
+                '{"dependencies":{}}\n',
+                encoding="utf-8",
+            )
+
+            with (
+                patch.object(commands, "prepare_staging", return_value=staging),
+                patch.object(commands, "pnpm_add", new=AsyncMock()),
+                self.assertRaises(PluginOperationError),
+            ):
+                await repository.import_online("job-1", "example-plugin", "1.0.0")
+
+    async def test_manager_composes_package_operations_as_a_collaborator(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+
+            async def restart(_: str) -> bool:
+                return True
+
+            manager = SharedPluginManager(
+                database_path=root / "users.db",
+                state_root=root / "state",
+                users_root=root / "users",
+                harness_cli="/unused",
+                restart_tenant=restart,
+            )
+
+            self.assertIsInstance(manager.commands, PluginCommandRunner)
+            self.assertIsInstance(manager.packages, SharedPackageRepository)
+            self.assertEqual(manager.packages.releases, root / "state/plugins/releases")
+
     async def test_registry_versions_and_latest_are_returned(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -179,9 +224,13 @@ class PluginVersionDiscoveryTests(unittest.IsolatedAsyncioTestCase):
                 )
             )
             with (
-                patch.object(manager, "_prepare_staging", return_value=staging),
-                patch.object(manager, "_registry_arguments", return_value=[]),
-                patch.object(manager, "_run_process", process),
+                patch.object(
+                    manager.commands,
+                    "prepare_staging",
+                    return_value=staging,
+                ),
+                patch.object(manager.commands, "registry_arguments", return_value=[]),
+                patch.object(manager.commands, "run", process),
             ):
                 result = await manager.discover_versions("@scope/example-plugin")
 
@@ -256,7 +305,7 @@ class ProfileValidationTests(unittest.TestCase):
                 harness_cli="/unused",
                 restart_tenant=restart,
             )
-            with patch.object(manager, "_run_process", side_effect=run_process):
+            with patch.object(manager.commands, "run", side_effect=run_process):
                 try:
                     asyncio.run(manager._validate_profile(record))
                 except PluginOperationError as error:

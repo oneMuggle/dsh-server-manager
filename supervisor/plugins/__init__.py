@@ -1,6 +1,7 @@
 """Supervisor-owned shared plugin runtime."""
 
-from .manager import PluginOperationError, SharedPluginManager
+from .errors import PluginOperationError
+from .manager import SharedPluginManager
 from .registry import validate_package_name, validate_requested_version
 
 __all__ = [
