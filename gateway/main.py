@@ -10,12 +10,10 @@ from pathlib import Path
 from typing import Annotated, Literal
 
 import aiohttp
-from fastapi import Depends, FastAPI, HTTPException, Query, Request, Security, WebSocket
+from fastapi import FastAPI, HTTPException, Query, Request, WebSocket
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
-from fastapi.security import APIKeyCookie, HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, ConfigDict, Field
 
 from .auth import (
     FixedWindowLimiter,
@@ -25,6 +23,7 @@ from .auth import (
     verify_password,
 )
 from .config import Config
+from .dependencies import ApiToken, api_token as _api_token
 from .harness_rpc import (
     HarnessRpcBusinessError,
     HarnessRpcError,
@@ -39,6 +38,10 @@ from .providers import (
     CreateCustomProvider,
     CustomProviderCreated,
 )
+from .schemas.auth import AuthenticatedUser, Credentials, CurrentUser
+from .schemas.plugins import OnlinePluginImport, PluginAssignment
+from .schemas.uploads import DirectoryListing
+from .schemas.users import RegisteredUser, RegisteredUsers
 from .proxy import cookie_from_websocket, proxy_http, proxy_websocket
 from .registry import RegistryError, get_user, list_users
 from .supervisor_client import (
@@ -59,74 +62,6 @@ config = Config.from_environment()
 login_ip_limiter = FixedWindowLimiter(attempts=30, seconds=60)
 login_account_limiter = FixedWindowLimiter(attempts=10, seconds=60)
 register_limiter = FixedWindowLimiter(attempts=5, seconds=300)
-session_cookie = APIKeyCookie(name=config.cookie_name, auto_error=False)
-bearer_token = HTTPBearer(auto_error=False)
-SessionCookie = Annotated[str | None, Security(session_cookie)]
-BearerToken = Annotated[
-    HTTPAuthorizationCredentials | None,
-    Security(bearer_token),
-]
-
-
-class Credentials(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    username: Annotated[str, Field(min_length=3, max_length=24)]
-    password: Annotated[str, Field(min_length=8, max_length=256)]
-
-
-class CurrentUser(BaseModel):
-    username: str
-    role: Literal["admin", "user"]
-
-
-class AuthenticatedUser(CurrentUser):
-    access_token: str = Field(alias="accessToken")
-    token_type: Literal["Bearer"] = Field(alias="tokenType")
-    expires_in: int = Field(alias="expiresIn")
-
-
-class RegisteredUser(BaseModel):
-    username: str
-    role: Literal["admin", "user"]
-    disabled: bool
-    created_at: str
-
-
-class RegisteredUsers(BaseModel):
-    users: list[RegisteredUser]
-
-
-class DirectoryListing(BaseModel):
-    directory: str
-    directories: list[str]
-    truncated: bool
-
-
-class OnlinePluginImport(BaseModel):
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
-
-    package_name: str = Field(alias="packageName", min_length=1, max_length=214)
-    version: str = Field(default="latest", min_length=1, max_length=64)
-
-
-class PluginScope(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    type: Literal["all", "users"]
-    usernames: list[str] = Field(default_factory=list, max_length=10000)
-    includeDisabledUsers: bool = False
-
-
-class PluginAssignment(BaseModel):
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
-
-    action: Literal["install", "uninstall", "enable", "disable"]
-    plugin_id: int = Field(alias="pluginId", gt=0)
-    version_id: int | None = Field(default=None, alias="versionId", gt=0)
-    scope: PluginScope
-    enabled_after_install: bool = Field(default=True, alias="enabledAfterInstall")
-    apply_to_future_users: bool = Field(default=False, alias="applyToFutureUsers")
 
 
 def _rpc_failure(error: HarnessRpcError, operation: str) -> HTTPException:
@@ -169,24 +104,6 @@ def _resolve_user(token: str | None) -> dict | None:
 def _request_user(request: Request) -> dict | None:
     return _resolve_user(request.cookies.get(config.cookie_name))
 
-
-def _api_token(
-    request: Request,
-    cookie: SessionCookie,
-    bearer: BearerToken,
-) -> str | None:
-    if "authorization" in request.headers:
-        if bearer is None:
-            raise HTTPException(
-                status_code=401,
-                detail="无效的 Authorization 请求头",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-        return bearer.credentials
-    return cookie
-
-
-ApiToken = Annotated[str | None, Depends(_api_token)]
 
 
 def _user_role(user: dict) -> Literal["admin", "user"]:

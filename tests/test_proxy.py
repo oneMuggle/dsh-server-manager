@@ -9,16 +9,16 @@ from fastapi import HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials
 
 from gateway.auth import hash_password, parse_session
+from gateway.dependencies import api_token as _api_token
 from gateway.proxy import LOOPBACK_CHECK, UUID_SHIM, _patch_connection_module, _patch_html
 from gateway.main import (
     SWAGGER_UI_STATIC_DIR,
-    Credentials,
-    _api_token,
     app,
     config,
     login,
     swagger_ui,
 )
+from gateway.schemas.auth import Credentials
 from gateway.pages import admin_page, auth_page
 
 
