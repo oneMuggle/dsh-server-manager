@@ -64,6 +64,20 @@ hostname -I
 http://<服务器局域网 IP>:3081/
 ```
 
+### GitHub 镜像
+
+每次向 `main` 推送提交时，GitHub Actions 会递归检出固定版本的 Harness 子模块，构建 Docker 镜像并发布到 GitHub Container Registry：
+
+```text
+ghcr.io/mill413/dsh-server-manager:<提交哈希前7位>
+```
+
+例如提交 `abcdef123...` 对应镜像标签 `abcdef1`。项目不发布浮动的 `latest` 标签，部署时应显式选择一个提交标签，以便复现和回滚：
+
+```sh
+docker pull ghcr.io/mill413/dsh-server-manager:<7位提交哈希>
+```
+
 没有有效登录信息时，主入口会自动跳转登录页；可以从登录页的“注册新账号”按钮进入注册页。注册或登录成功后会进入该用户的 DSH 主界面。模型提供商和 API Key 在 DSH 的“设置 → 模型”中由每个用户分别配置。
 
 `admin` 是唯一固定管理员，其他注册账号均为普通用户。管理员的 DSH 主界面会显示“管理后台”入口。
