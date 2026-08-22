@@ -2,18 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 import signal
 from pathlib import Path
 from typing import Any
 
 
 LOGGER = logging.getLogger("dsh.supervisor")
-STATE_ROOT = Path(os.environ.get("DSH_STATE_ROOT", "/var/lib/dsh"))
-USERS_ROOT = STATE_ROOT / "users"
-HARNESS_CLI = "/opt/deepseek-harness/apps/cli/lib/bin.js"
-
-
 async def http_ready(port: int) -> bool:
     try:
         reader, writer = await asyncio.wait_for(
@@ -32,7 +26,9 @@ async def http_ready(port: int) -> bool:
 
 
 class TenantManager:
-    def __init__(self) -> None:
+    def __init__(self, *, users_root: Path, harness_cli: str) -> None:
+        self.users_root = users_root
+        self.harness_cli = harness_cli
         self.tasks: dict[str, asyncio.Task[None]] = {}
         self.ready: dict[str, asyncio.Event] = {}
         self.processes: dict[str, asyncio.subprocess.Process] = {}
@@ -59,7 +55,7 @@ class TenantManager:
         username = str(user["username"])
         os_user = str(user["os_user"])
         port = int(user["port"])
-        tenant_root = USERS_ROOT / username
+        tenant_root = self.users_root / username
         home = tenant_root / "home"
         workspace = home / "workspace"
         state = tenant_root / "state"
@@ -74,7 +70,7 @@ class TenantManager:
                 f"DSH_HOME={state}",
                 "PATH=/usr/local/bin:/usr/bin:/bin",
                 "/usr/local/bin/node",
-                HARNESS_CLI,
+                self.harness_cli,
                 "web",
                 "--no-open",
                 "--port", str(port),

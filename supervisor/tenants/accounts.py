@@ -10,8 +10,6 @@ from typing import Any
 from .firewall import TenantNetwork
 
 
-STATE_ROOT = Path(os.environ.get("DSH_STATE_ROOT", "/var/lib/dsh"))
-USERS_ROOT = STATE_ROOT / "users"
 FIRST_UID = 20000
 FIRST_PORT = 3101
 ADMIN_USERNAME = "admin"
@@ -65,7 +63,7 @@ def new_user_record(
     }
 
 
-def provision_os_user(user: dict[str, Any], users_root: Path = USERS_ROOT) -> None:
+def provision_os_user(user: dict[str, Any], users_root: Path) -> None:
     username = str(user["os_user"])
     uid = int(user["uid"])
     tenant_root = users_root / str(user["username"])

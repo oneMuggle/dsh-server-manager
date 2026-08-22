@@ -4,12 +4,12 @@ import os
 import unittest
 from unittest.mock import patch
 
-from supervisor.uploads import upload_directory_parts, validate_upload_filename
-from supervisor.users import (
+from supervisor.tenants.accounts import (
     admin_password_from_environment,
     normalize_user_roles,
     valid_password_record,
 )
+from supervisor.tenants.uploads import upload_directory_parts, validate_upload_filename
 
 
 class UploadPathTests(unittest.TestCase):

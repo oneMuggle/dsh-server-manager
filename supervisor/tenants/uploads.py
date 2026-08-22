@@ -10,13 +10,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 
-STATE_ROOT = Path(os.environ.get("DSH_STATE_ROOT", "/var/lib/dsh"))
-GATEWAY_ROOT = STATE_ROOT / "gateway"
-USERS_ROOT = STATE_ROOT / "users"
-UPLOAD_ROOT = GATEWAY_ROOT / "uploads"
-GATEWAY_USER = "dsh-gateway"
 UPLOAD_SPOOL_PATTERN = re.compile(r"^[0-9a-f]{32}\.upload$")
-MAX_UPLOAD_BYTES = 100 * 1024 * 1024
 
 
 def upload_directory_parts(value: str) -> tuple[str, ...]:
@@ -79,11 +73,13 @@ def _open_owned_directory(
 def list_upload_directories(
     user: dict[str, Any],
     directory: str,
+    *,
+    users_root: Path,
 ) -> dict[str, Any]:
     parts = upload_directory_parts(directory)
     uid = int(user["uid"])
     gid = pwd.getpwnam(str(user["os_user"])).pw_gid
-    tenant_root = USERS_ROOT / str(user["username"])
+    tenant_root = users_root / str(user["username"])
     workspace_fd = -1
     target_fd = -1
     root_fd = os.open(
@@ -155,18 +151,23 @@ def install_uploaded_file(
     directory: str,
     filename: str,
     expected_size: int,
+    *,
+    users_root: Path,
+    upload_root: Path,
+    gateway_user: str,
+    max_upload_bytes: int,
 ) -> dict[str, Any]:
     if not UPLOAD_SPOOL_PATTERN.fullmatch(spool_name):
         raise ValueError("无效的上传临时文件")
-    if expected_size < 0 or expected_size > MAX_UPLOAD_BYTES:
+    if expected_size < 0 or expected_size > max_upload_bytes:
         raise ValueError("上传文件大小无效")
     parts = upload_directory_parts(directory)
     filename = validate_upload_filename(filename)
     uid = int(user["uid"])
     gid = pwd.getpwnam(str(user["os_user"])).pw_gid
-    gateway_uid = pwd.getpwnam(GATEWAY_USER).pw_uid
+    gateway_uid = pwd.getpwnam(gateway_user).pw_uid
 
-    source_path = UPLOAD_ROOT / spool_name
+    source_path = upload_root / spool_name
     source_fd = os.open(
         source_path,
         os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0),
@@ -183,7 +184,7 @@ def install_uploaded_file(
         ):
             raise ValueError("上传临时文件校验失败")
 
-        tenant_root = USERS_ROOT / str(user["username"])
+        tenant_root = users_root / str(user["username"])
         root_fd = os.open(
             tenant_root,
             os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0),
@@ -256,5 +257,3 @@ def install_uploaded_file(
         "filename": filename,
         "size": expected_size,
     }
-
-

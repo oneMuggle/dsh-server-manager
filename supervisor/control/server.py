@@ -24,8 +24,8 @@ from common.contracts.control import (
 )
 from common.errors import ControlRequestError
 
-from .firewall import FirewallError
-from .plugins import PluginOperationError
+from ..plugins import PluginOperationError
+from ..tenants.firewall import FirewallError
 
 
 class ControlServer:

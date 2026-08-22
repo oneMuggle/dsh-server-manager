@@ -6,8 +6,9 @@ from pathlib import Path
 
 import common.security
 import gateway.auth
-import supervisor.firewall
+import supervisor.application
 import supervisor.main
+import supervisor.tenants.firewall
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -71,7 +72,21 @@ class DependencyDirectionTests(unittest.TestCase):
                 self.assertFalse((PROJECT_ROOT / "gateway" / name).exists())
 
     def test_supervisor_handles_the_concrete_firewall_error(self) -> None:
-        self.assertIs(supervisor.main.FirewallError, supervisor.firewall.FirewallError)
+        self.assertIs(
+            supervisor.application.FirewallError,
+            supervisor.tenants.firewall.FirewallError,
+        )
+
+    def test_supervisor_entrypoint_is_only_the_process_shell(self) -> None:
+        tree = ast.parse((PROJECT_ROOT / "supervisor" / "main.py").read_text())
+        classes = [node.name for node in tree.body if isinstance(node, ast.ClassDef)]
+        relative_imports = {
+            node.module
+            for node in tree.body
+            if isinstance(node, ast.ImportFrom) and node.level and node.module
+        }
+        self.assertEqual(classes, [])
+        self.assertEqual(relative_imports, {"application"})
 
 
 if __name__ == "__main__":

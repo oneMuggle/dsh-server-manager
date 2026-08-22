@@ -18,7 +18,7 @@ from common.contracts.control import (
 from gateway.main import app, create_app
 from common.storage.users import initialize_registry
 from gateway.services.supervisor import SupervisorError, _request
-from supervisor.ipc_server import ControlServer
+from supervisor.control import ControlServer
 from gateway.routers.plugins import registry_plugin_versions
 from gateway.routers.providers import create_custom_provider
 from gateway.routers.uploads import upload_directories

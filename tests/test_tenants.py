@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import unittest
+from pathlib import Path
 
 from supervisor.tenants import TenantManager
 
@@ -16,7 +17,10 @@ class TenantManagerTests(unittest.IsolatedAsyncioTestCase):
                 entered.set()
                 await release.wait()
 
-        manager = WaitingTenantManager()
+        manager = WaitingTenantManager(
+            users_root=Path("/unused"),
+            harness_cli="/unused/dsh",
+        )
         user = {"username": "alice", "os_user": "dsh-alice", "port": 3101}
         manager.start(user)
         manager.start(user)
