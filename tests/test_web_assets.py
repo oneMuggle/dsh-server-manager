@@ -111,6 +111,17 @@ class ManagementWebAssetTests(unittest.TestCase):
                     self.assertIn(f'/gateway-assets/{asset}', html)
                     self.assertTrue((MANAGEMENT_STATIC_ROOT / asset).is_file())
 
+    def test_official_plugins_are_collapsible_and_remember_their_state(self) -> None:
+        html = (TEMPLATE_ROOT / "plugins.html").read_text()
+        script = (MANAGEMENT_STATIC_ROOT / "plugins.js").read_text()
+        stylesheet = (MANAGEMENT_STATIC_ROOT / "plugins.css").read_text()
+
+        self.assertIn('<details id="builtin-details">', html)
+        self.assertIn('id="builtin-count"', html)
+        self.assertIn("dsm.plugins.builtins.expanded", script)
+        self.assertIn("localStorage.setItem", script)
+        self.assertIn("details[open] .collapse-label", stylesheet)
+
     def test_injected_upload_widget_is_also_packaged_as_web_assets(self) -> None:
         widget = UPLOAD_WIDGET.decode()
         self.assertEqual(widget, (TEMPLATE_ROOT / "upload-widget.html").read_text())

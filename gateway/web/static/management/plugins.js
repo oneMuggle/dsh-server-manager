@@ -2,6 +2,8 @@ const message = document.getElementById('message');
 const pluginRoot = document.getElementById('plugins');
 const builtinRoot = document.getElementById('builtin-plugins');
 const builtinFilter = document.getElementById('builtin-filter');
+const builtinDetails = document.getElementById('builtin-details');
+const builtinCount = document.getElementById('builtin-count');
 const jobsRoot = document.getElementById('jobs');
 const target = document.getElementById('target');
 const onlineForm = document.getElementById('online');
@@ -12,6 +14,11 @@ const importOnline = document.getElementById('import-online');
 let users = [];
 let builtinPlugins = [];
 let discoveredPackage = '';
+const builtinCollapseKey = 'dsm.plugins.builtins.expanded';
+try { builtinDetails.open = localStorage.getItem(builtinCollapseKey) === 'true'; } catch (_) {}
+builtinDetails.addEventListener('toggle', () => {
+  try { localStorage.setItem(builtinCollapseKey, String(builtinDetails.open)); } catch (_) {}
+});
 async function api(url, options) {
   const response = await fetch(url, options);
   const body = await response.json().catch(() => ({}));
@@ -79,7 +86,7 @@ async function load() {
   try {
     const [pluginData,userData,jobData]=await Promise.all([api('/api/v1/plugins'),api('/api/v1/users'),api('/api/v1/plugins/jobs')]);
     users=userData.users; const current=target.value; target.replaceChildren(new Option('所有启用用户','all')); for(const user of users) target.append(new Option(`${user.username}${user.disabled?'（已停用）':''}`,user.username)); if([...target.options].some(x=>x.value===current)) target.value=current;
-    builtinPlugins=pluginData.builtinPlugins || []; renderBuiltinPlugins(builtinPlugins); renderPlugins(pluginData.plugins); renderJobs(jobData.jobs); message.textContent=`${builtinPlugins.length} 个官方插件，${pluginData.plugins.length} 个共享插件，${users.length} 个用户`;
+    builtinPlugins=pluginData.builtinPlugins || []; builtinCount.textContent=`（${builtinPlugins.length}）`; renderBuiltinPlugins(builtinPlugins); renderPlugins(pluginData.plugins); renderJobs(jobData.jobs); message.textContent=`${builtinPlugins.length} 个官方插件，${pluginData.plugins.length} 个共享插件，${users.length} 个用户`;
   } catch(error) { message.textContent=`加载失败：${error.message}`; }
 }
 function resetDiscoveredVersions() {

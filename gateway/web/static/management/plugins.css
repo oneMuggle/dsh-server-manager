@@ -11,6 +11,17 @@
     button:disabled, select:disabled { cursor: not-allowed; opacity: .55; }
     button.danger { color: #ffbaba; border-color: #733b3b; }
     section { margin: 16px 0; padding: 18px; border: 1px solid #303746; border-radius: 14px; background: #181d27; }
+    .collapsible-section { padding: 0; }
+    .collapsible-section summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px; border-radius: 14px; cursor: pointer; list-style: none; user-select: none; }
+    .collapsible-section summary::-webkit-details-marker { display: none; }
+    .collapsible-section summary:hover { background: #1d2330; }
+    .collapsible-section summary:focus-visible { outline: 2px solid #6689ff; outline-offset: -2px; }
+    .collapsible-section summary h2 { margin: 0; }
+    .collapsible-body { padding: 0 18px 18px; border-top: 1px solid #303746; }
+    .collapse-label { color: #b9c8f6; font-size: 13px; white-space: nowrap; }
+    .collapse-label::after { content: '展开'; }
+    details[open] .collapse-label::after { content: '收起'; }
+    .section-count { color: #8da0c9; font-size: 13px; font-weight: 500; }
     form { display: flex; gap: 9px; flex-wrap: wrap; } form input[type=text] { min-width: 230px; }
     .grow { flex: 1; } .muted { color: #aeb9d2; font-size: 13px; }
     #message { min-height: 22px; color: #b9c8f6; }
@@ -22,4 +33,4 @@
     .ok { background: #174c37; } .bad { background: #5a2929; }
     .builtin-default { display: block; color: #8da0c9; font-size: 11px; margin-top: 3px; }
     .module-name { color: #b9c8f6; font-family: ui-monospace, monospace; font-size: 12px; overflow-wrap: anywhere; }
-    @media (max-width: 760px) { .hide-small { display:none; } main { width: calc(100vw - 20px); } }
+    @media (max-width: 760px) { .hide-small { display:none; } main { width: calc(100vw - 20px); } .collapsible-section summary { padding: 16px; } .collapsible-body { padding: 0 16px 16px; } }
