@@ -19,7 +19,7 @@ async def _request(
 ) -> dict[str, Any]:
     try:
         reader, writer = await asyncio.wait_for(
-            asyncio.open_unix_connection(socket_path), timeout=5
+            asyncio.open_unix_connection(socket_path, limit=1024 * 1024), timeout=5
         )
     except (OSError, asyncio.TimeoutError) as error:
         raise SupervisorError("user service is unavailable", "unavailable") from error
@@ -93,6 +93,81 @@ async def list_upload_directories(
             "action": "list_upload_directories",
             "username": username,
             "directory": directory,
+        },
+        timeout=15,
+    )
+
+
+async def import_online_plugin(
+    socket_path: Path,
+    package_name: str,
+    requested_version: str,
+    created_by: str,
+) -> dict[str, Any]:
+    return await _request(
+        socket_path,
+        {
+            "action": "plugin_online_import",
+            "package_name": package_name,
+            "requested_version": requested_version,
+            "created_by": created_by,
+        },
+        timeout=15,
+    )
+
+
+async def discover_plugin_versions(
+    socket_path: Path,
+    package_name: str,
+) -> dict[str, Any]:
+    return await _request(
+        socket_path,
+        {
+            "action": "plugin_discover_versions",
+            "package_name": package_name,
+        },
+        timeout=70,
+    )
+
+
+async def import_offline_plugin(
+    socket_path: Path,
+    spool_name: str,
+    created_by: str,
+) -> dict[str, Any]:
+    return await _request(
+        socket_path,
+        {
+            "action": "plugin_offline_import",
+            "spool_name": spool_name,
+            "created_by": created_by,
+        },
+        timeout=15,
+    )
+
+
+async def assign_plugin(
+    socket_path: Path,
+    *,
+    plugin_action: str,
+    plugin_id: int,
+    plugin_version_id: int | None,
+    scope: dict[str, Any],
+    enabled_after_install: bool,
+    apply_to_future_users: bool,
+    created_by: str,
+) -> dict[str, Any]:
+    return await _request(
+        socket_path,
+        {
+            "action": "plugin_assignment",
+            "plugin_action": plugin_action,
+            "plugin_id": plugin_id,
+            "plugin_version_id": plugin_version_id,
+            "scope": scope,
+            "enabled_after_install": enabled_after_install,
+            "apply_to_future_users": apply_to_future_users,
+            "created_by": created_by,
         },
         timeout=15,
     )

@@ -10,7 +10,7 @@ from fastapi import Request, WebSocket
 from fastapi.responses import Response, StreamingResponse
 from starlette.websockets import WebSocketDisconnect
 
-from .upload_ui import ADMIN_WIDGET, UPLOAD_WIDGET
+from .upload_ui import ADMIN_WIDGET, LOGOUT_WIDGET, UPLOAD_WIDGET
 
 HOP_BY_HOP = {
     "connection",
@@ -102,7 +102,7 @@ async def _request_body(request: Request) -> AsyncIterator[bytes]:
 
 def _patch_html(body: bytes, is_admin: bool = False) -> bytes:
     body = body.replace(b"<head>", b"<head>" + UUID_SHIM, 1)
-    widgets = UPLOAD_WIDGET + (ADMIN_WIDGET if is_admin else b"")
+    widgets = UPLOAD_WIDGET + LOGOUT_WIDGET + (ADMIN_WIDGET if is_admin else b"")
     body = body.replace(b"<body>", b"<body>" + widgets, 1)
     body = body.replace(
         CONNECTION_MODULE.encode() + b"?rev=",

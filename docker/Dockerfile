@@ -20,6 +20,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update \
     && apt-get install --no-install-recommends -y \
+      bubblewrap \
       iptables \
       passwd \
       python3 \
@@ -33,6 +34,15 @@ COPY requirements.txt /opt/dsh-lan-deployment/requirements.txt
 
 RUN python3 -m venv /opt/venv \
     && /opt/venv/bin/pip install --no-cache-dir -r /opt/dsh-lan-deployment/requirements.txt \
+    && npm install --global pnpm@11.7.0 \
+    && groupadd --gid 19998 dsh-plugin-installer \
+    && useradd \
+      --uid 19998 \
+      --gid dsh-plugin-installer \
+      --home-dir /nonexistent \
+      --no-create-home \
+      --shell /usr/sbin/nologin \
+      dsh-plugin-installer \
     && groupadd --gid 19999 dsh-gateway \
     && useradd \
       --uid 19999 \

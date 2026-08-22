@@ -13,14 +13,33 @@ import socket
 import stat
 import struct
 import subprocess
-import tempfile
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 from typing import Any
 
 from gateway.auth import hash_password
+from gateway.plugins import (
+    apply_plugin_defaults,
+    create_job,
+    get_plugin_version,
+    unfinished_job_ids,
+)
+from gateway.registry import (
+    RegistryError,
+    add_user,
+    get_user,
+    initialize_registry,
+    load_registry,
+    replace_registry,
+)
 
 from .firewall import FirewallError, TenantNetwork, apply_firewall
+from .plugins import (
+    PluginOperationError,
+    SharedPluginManager,
+    validate_package_name,
+    validate_requested_version,
+)
 
 logging.basicConfig(
     level=os.environ.get("LOG_LEVEL", "INFO"),
@@ -31,7 +50,8 @@ LOGGER = logging.getLogger("dsh.supervisor")
 STATE_ROOT = Path(os.environ.get("DSH_STATE_ROOT", "/var/lib/dsh"))
 GATEWAY_ROOT = STATE_ROOT / "gateway"
 USERS_ROOT = STATE_ROOT / "users"
-REGISTRY_PATH = GATEWAY_ROOT / "users.json"
+REGISTRY_PATH = GATEWAY_ROOT / "users.db"
+LEGACY_REGISTRY_PATH = GATEWAY_ROOT / "users.json"
 SECRET_PATH = GATEWAY_ROOT / "session-secret"
 UPLOAD_ROOT = GATEWAY_ROOT / "uploads"
 RUNTIME_ROOT = Path("/run/dsh")
@@ -48,34 +68,11 @@ ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD_ENV = "DSH_ADMIN_PASSWORD"
 
 
-def _atomic_json_write(path: Path, value: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
-    try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
-            json.dump(value, stream, ensure_ascii=False, indent=2, sort_keys=True)
-            stream.write("\n")
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.chmod(temporary_name, 0o640)
-        gateway = pwd.getpwnam(GATEWAY_USER)
-        os.chown(temporary_name, 0, gateway.pw_gid)
-        os.replace(temporary_name, path)
-    finally:
-        try:
-            os.unlink(temporary_name)
-        except FileNotFoundError:
-            pass
-
-
 def _load_registry() -> dict[str, Any]:
     try:
-        value = json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return {"version": 1, "users": {}}
-    if value.get("version") != 1 or not isinstance(value.get("users"), dict):
-        raise RuntimeError("invalid user registry")
-    return value
+        return load_registry(REGISTRY_PATH)
+    except RegistryError as error:
+        raise RuntimeError("invalid user database") from error
 
 
 def _normalize_user_roles(registry: dict[str, Any]) -> bool:
@@ -139,11 +136,11 @@ def _ensure_gateway_state() -> None:
     os.chown(USERS_ROOT, 0, 0)
     os.chmod(USERS_ROOT, 0o755)
 
-    if not REGISTRY_PATH.exists():
-        _atomic_json_write(REGISTRY_PATH, {"version": 1, "users": {}})
-    else:
-        os.chown(REGISTRY_PATH, 0, gateway.pw_gid)
-        os.chmod(REGISTRY_PATH, 0o640)
+    migrated = initialize_registry(REGISTRY_PATH, LEGACY_REGISTRY_PATH)
+    if migrated:
+        LOGGER.info("migrated legacy user registry from %s", LEGACY_REGISTRY_PATH)
+    os.chown(REGISTRY_PATH, 0, gateway.pw_gid)
+    os.chmod(REGISTRY_PATH, 0o640)
     if not SECRET_PATH.exists():
         SECRET_PATH.write_text(secrets.token_urlsafe(48), encoding="ascii")
     os.chown(SECRET_PATH, 0, gateway.pw_gid)
@@ -153,6 +150,8 @@ def _ensure_gateway_state() -> None:
     os.chmod(UPLOAD_ROOT, 0o700)
     for entry in UPLOAD_ROOT.iterdir():
         try:
+            if re.fullmatch(r"[0-9a-f]{32}\.plugin\.tgz", entry.name):
+                continue
             if entry.is_file() or entry.is_symlink():
                 entry.unlink()
         except FileNotFoundError:
@@ -482,6 +481,7 @@ class TenantManager:
         self.tasks: dict[str, asyncio.Task[None]] = {}
         self.ready: dict[str, asyncio.Event] = {}
         self.processes: dict[str, asyncio.subprocess.Process] = {}
+        self.restart_requests: set[str] = set()
         self.stopping = False
 
     def start(self, user: dict[str, Any]) -> None:
@@ -559,9 +559,27 @@ class TenantManager:
             self.ready[username].clear()
             if self.stopping:
                 return
+            if username in self.restart_requests:
+                self.restart_requests.discard(username)
+                delay = 1
+                continue
             LOGGER.error("DSH tenant %s exited with status %s; restarting", username, code)
             await asyncio.sleep(delay)
             delay = min(delay * 2, 30)
+
+    async def restart(self, username: str) -> bool:
+        process = self.processes.get(username)
+        ready = self.ready.get(username)
+        if process is None or ready is None or process.returncode is not None:
+            return False
+        ready.clear()
+        self.restart_requests.add(username)
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            self.restart_requests.discard(username)
+            return False
+        return await self.wait_ready(username)
 
     async def stop(self) -> None:
         self.stopping = True
@@ -577,6 +595,28 @@ class Supervisor:
         self.fatal = asyncio.Event()
         self.server: asyncio.AbstractServer | None = None
         self.gateway: asyncio.subprocess.Process | None = None
+        self.background_tasks: set[asyncio.Task[None]] = set()
+        self.plugins = SharedPluginManager(
+            database_path=REGISTRY_PATH,
+            state_root=STATE_ROOT,
+            users_root=USERS_ROOT,
+            harness_cli=HARNESS_CLI,
+            restart_tenant=self.tenants.restart,
+        )
+
+    def _schedule_plugin_reconcile(self, username: str) -> None:
+        async def reconcile() -> None:
+            if not await self.tenants.wait_ready(username):
+                LOGGER.error("tenant %s was not ready for plugin reconciliation", username)
+                return
+            try:
+                await self.plugins.reconcile_user(username)
+            except Exception:
+                LOGGER.exception("failed to reconcile plugins for %s", username)
+
+        task = asyncio.create_task(reconcile(), name=f"plugins-{username}")
+        self.background_tasks.add(task)
+        task.add_done_callback(self.background_tasks.discard)
 
     async def create_user(self, username: str, password: dict[str, Any]) -> dict[str, Any]:
         if not USERNAME_PATTERN.fullmatch(username):
@@ -592,16 +632,119 @@ class Supervisor:
             _provision_os_user(user)
             candidate = {"version": 1, "users": {**registry["users"], username: user}}
             apply_firewall(_network_rules(candidate), gateway_port=GATEWAY_PORT)
-            _atomic_json_write(REGISTRY_PATH, candidate)
+            try:
+                add_user(REGISTRY_PATH, user)
+            except RegistryError as error:
+                raise RuntimeError("unable to persist user") from error
             self.tenants.start(user)
 
         ready = await self.tenants.wait_ready(username)
+        if ready:
+            apply_plugin_defaults(REGISTRY_PATH, username)
+            self._schedule_plugin_reconcile(username)
         return {
             "username": username,
             "password_version": 1,
             "role": user["role"],
             "ready": ready,
         }
+
+    async def import_online_plugin(
+        self, package_name: str, requested_version: str, created_by: str
+    ) -> dict[str, Any]:
+        package_name = validate_package_name(package_name)
+        requested_version = validate_requested_version(requested_version)
+        job_id = secrets.token_hex(16)
+        create_job(
+            REGISTRY_PATH,
+            job_id=job_id,
+            kind="online_import",
+            created_by=created_by,
+            package_name=package_name,
+            requested_version=requested_version,
+        )
+        await self.plugins.enqueue(job_id)
+        return {"job_id": job_id, "status": "queued"}
+
+    async def discover_plugin_versions(self, package_name: str) -> dict[str, Any]:
+        return await self.plugins.discover_versions(package_name)
+
+    async def import_offline_plugin(
+        self, spool_name: str, created_by: str
+    ) -> dict[str, Any]:
+        if not re.fullmatch(r"[0-9a-f]{32}\.plugin\.tgz", spool_name):
+            raise ValueError("无效的离线插件上传文件")
+        if not (UPLOAD_ROOT / spool_name).is_file():
+            raise ValueError("离线插件上传文件不存在")
+        job_id = secrets.token_hex(16)
+        create_job(
+            REGISTRY_PATH,
+            job_id=job_id,
+            kind="offline_import",
+            created_by=created_by,
+            scope={"spoolName": spool_name},
+        )
+        await self.plugins.enqueue(job_id)
+        return {"job_id": job_id, "status": "queued"}
+
+    async def assign_plugin(self, request: dict[str, Any]) -> dict[str, Any]:
+        action = str(request.get("plugin_action", ""))
+        if action not in {"install", "uninstall", "enable", "disable"}:
+            raise ValueError("无效的插件操作")
+        plugin_id = int(request.get("plugin_id", 0))
+        version_id_value = request.get("plugin_version_id")
+        version_id = int(version_id_value) if version_id_value is not None else None
+        if action != "uninstall" and version_id is None:
+            raise ValueError("请选择插件版本")
+        if version_id is not None:
+            version = get_plugin_version(REGISTRY_PATH, version_id)
+            if version is None or int(version["plugin_id"]) != plugin_id:
+                raise ValueError("插件版本不存在")
+
+        scope = request.get("scope")
+        if not isinstance(scope, dict):
+            raise ValueError("无效的用户范围")
+        registry = _load_registry()
+        scope_type = str(scope.get("type", ""))
+        if scope_type == "all":
+            include_disabled = bool(scope.get("includeDisabledUsers", False))
+            usernames = [
+                username
+                for username, user in registry["users"].items()
+                if include_disabled or user.get("disabled") is not True
+            ]
+        elif scope_type == "users":
+            values = scope.get("usernames")
+            if not isinstance(values, list) or not all(isinstance(value, str) for value in values):
+                raise ValueError("无效的用户列表")
+            usernames = sorted(set(values))
+            if any(username not in registry["users"] for username in usernames):
+                raise ValueError("用户列表中包含不存在的用户")
+        else:
+            raise ValueError("无效的用户范围")
+        if not usernames:
+            raise ValueError("没有符合条件的用户")
+
+        job_id = secrets.token_hex(16)
+        persisted_scope = {
+            "type": scope_type,
+            "includeDisabledUsers": bool(scope.get("includeDisabledUsers", False)),
+            "enabledAfterInstall": bool(request.get("enabled_after_install", True)),
+            "applyToFutureUsers": bool(request.get("apply_to_future_users", False)),
+        }
+        create_job(
+            REGISTRY_PATH,
+            job_id=job_id,
+            kind="assign",
+            created_by=str(request.get("created_by", "admin")),
+            action=action,
+            plugin_id=plugin_id,
+            plugin_version_id=version_id,
+            scope=persisted_scope,
+            usernames=usernames,
+        )
+        await self.plugins.enqueue(job_id)
+        return {"job_id": job_id, "status": "queued", "target_count": len(usernames)}
 
     async def install_upload(
         self,
@@ -611,8 +754,10 @@ class Supervisor:
         filename: str,
         size: int,
     ) -> dict[str, Any]:
-        registry = _load_registry()
-        user = registry["users"].get(username)
+        try:
+            user = get_user(REGISTRY_PATH, username)
+        except RegistryError as error:
+            raise RuntimeError("unable to read user database") from error
         if not isinstance(user, dict) or user.get("disabled") is True:
             raise ValueError("用户不存在或已停用")
         return await asyncio.to_thread(
@@ -629,8 +774,10 @@ class Supervisor:
         username: str,
         directory: str,
     ) -> dict[str, Any]:
-        registry = _load_registry()
-        user = registry["users"].get(username)
+        try:
+            user = get_user(REGISTRY_PATH, username)
+        except RegistryError as error:
+            raise RuntimeError("unable to read user database") from error
         if not isinstance(user, dict) or user.get("disabled") is True:
             raise ValueError("用户不存在或已停用")
         return await asyncio.to_thread(_list_upload_directories, user, directory)
@@ -671,6 +818,23 @@ class Supervisor:
                             str(request.get("username", "")),
                             str(request.get("directory", ".")),
                         )
+                    elif action == "plugin_online_import":
+                        result = await self.import_online_plugin(
+                            str(request.get("package_name", "")),
+                            str(request.get("requested_version", "latest")),
+                            str(request.get("created_by", "admin")),
+                        )
+                    elif action == "plugin_discover_versions":
+                        result = await self.discover_plugin_versions(
+                            str(request.get("package_name", ""))
+                        )
+                    elif action == "plugin_offline_import":
+                        result = await self.import_offline_plugin(
+                            str(request.get("spool_name", "")),
+                            str(request.get("created_by", "admin")),
+                        )
+                    elif action == "plugin_assignment":
+                        result = await self.assign_plugin(request)
                     else:
                         raise ValueError("unknown action")
                     response = {"ok": True, **result}
@@ -680,7 +844,7 @@ class Supervisor:
                         "code": "conflict",
                         "message": "用户名已存在",
                     }
-                except (TypeError, ValueError) as error:
+                except (TypeError, ValueError, PluginOperationError) as error:
                     response = {
                         "ok": False,
                         "code": "bad_request",
@@ -728,7 +892,15 @@ class Supervisor:
             _provision_os_user(user)
         apply_firewall(_network_rules(registry), gateway_port=GATEWAY_PORT)
         if registry_changed:
-            _atomic_json_write(REGISTRY_PATH, registry)
+            try:
+                replace_registry(REGISTRY_PATH, registry)
+            except RegistryError as error:
+                raise RuntimeError("unable to persist user database") from error
+
+        self.plugins.initialize()
+        for user in registry["users"].values():
+            self.plugins.prepare_user_profile(user)
+        await self.plugins.start(unfinished_job_ids(REGISTRY_PATH))
 
         RUNTIME_ROOT.mkdir(parents=True, exist_ok=True)
         gateway_account = pwd.getpwnam(GATEWAY_USER)
@@ -742,6 +914,7 @@ class Supervisor:
         for user in registry["users"].values():
             if user.get("disabled") is not True:
                 self.tenants.start(user)
+                self._schedule_plugin_reconcile(str(user["username"]))
 
         self.gateway = await asyncio.create_subprocess_exec(
             "runuser", "-u", GATEWAY_USER, "--",
@@ -778,6 +951,10 @@ class Supervisor:
                     os.killpg(self.gateway.pid, signal.SIGKILL)
                 except ProcessLookupError:
                     pass
+        await self.plugins.stop()
+        for task in self.background_tasks:
+            task.cancel()
+        await asyncio.gather(*self.background_tasks, return_exceptions=True)
         await self.tenants.stop()
         CONTROL_SOCKET.unlink(missing_ok=True)
 

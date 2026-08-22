@@ -97,7 +97,7 @@ def admin_page() -> str:
 <body><main>
   <header>
     <div><h1>用户管理</h1><div id="message">正在加载用户列表…</div></div>
-    <nav><a href="/">返回 DSH</a><a href="/docs">Swagger</a><button id="refresh" class="primary" type="button">刷新</button></nav>
+    <nav><a href="/admin/plugins">插件管理</a><a href="/">返回 DSH</a><a href="/docs">Swagger</a><button id="refresh" class="primary" type="button">刷新</button><button id="logout" type="button">退出登录</button></nav>
   </header>
   <section class="panel">
     <table>
@@ -130,5 +130,16 @@ async function loadUsers() {
   } catch (error) { message.textContent = `加载失败：${error.message || error}`; }
 }
 document.getElementById('refresh').addEventListener('click', loadUsers);
+document.getElementById('logout').addEventListener('click', async event => {
+  event.currentTarget.disabled = true;
+  try {
+    const response = await fetch('/api/gateway/v1/auth/logout', {method: 'POST'});
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    location.replace('/login');
+  } catch (error) {
+    event.currentTarget.disabled = false;
+    message.textContent = `退出失败：${error.message || error}`;
+  }
+});
 loadUsers();
 </script></body></html>"""

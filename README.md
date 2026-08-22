@@ -69,7 +69,13 @@ http://<服务器局域网 IP>:3080/
 
 ```text
 data/
-├── gateway/              # 用户注册表与会话签名密钥
+├── gateway/
+│   ├── users.db          # SQLite 用户数据库
+│   └── session-secret    # Cookie/Bearer Token 签名密钥
+├── plugins/
+│   ├── artifacts/        # 去重后的离线原始包
+│   ├── releases/         # 只读的共享插件版本
+│   └── pnpm-store/       # 联网/离线安装共用的 pnpm store
 └── users/<username>/
     ├── home/             # 用户在界面中看到的 HOME
     │   └── workspace/    # 默认工作区
@@ -101,6 +107,30 @@ curl -X POST -b cookies.txt http://127.0.0.1:3080/api/gateway/v1/auth/logout
 
 用户名长度为 3–24，只能使用小写字母、数字、下划线和连字符，且必须以字母开头；密码至少 8 个字符。
 
+注册和登录成功时，响应在设置原有 HttpOnly Cookie 的同时返回相同的 Bearer Token：
+
+```json
+{
+  "username": "alice",
+  "role": "user",
+  "accessToken": "<signed-token>",
+  "tokenType": "Bearer",
+  "expiresIn": 604800
+}
+```
+
+二次开发可以通过 `Authorization` 请求头调用受保护的网关接口：
+
+```sh
+curl \
+  -H "Authorization: Bearer <signed-token>" \
+  http://127.0.0.1:3080/api/gateway/v1/auth/me
+```
+
+Bearer Token 与浏览器 Cookie 使用同一套签名、七天有效期和失效检查。用户被禁用或 `password_version` 变化后，两者都会失效；退出登录只清除浏览器 Cookie，不会单独撤销已经交给外部程序的 Bearer Token。
+
+用户数据使用 SQLite 存储，用户名、UID 和租户端口均有唯一索引。升级已有部署时，如果发现旧的 `data/gateway/users.json` 且数据库尚为空，启动过程会自动将所有账号导入 `users.db`；旧 JSON 文件会保留作为迁移备份，后续查询和注册只使用 SQLite。
+
 ## 管理后台与 Swagger
 
 固定账号 `admin` 访问 `/admin` 可以查看已注册用户的用户名、角色、状态和注册时间。用户列表接口为 `GET /api/gateway/v1/admin/users`，未登录请求返回 401，普通用户请求返回 403；接口不会返回密码记录、Linux UID、租户端口或用户配置。
@@ -129,7 +159,33 @@ curl -X POST -b cookies.txt http://127.0.0.1:3080/api/gateway/v1/auth/logout
 
 配置通过目标用户 Harness 自身的设置 RPC 写入。`apiKey` 不会进入网关注册表、响应或设置文件，而是单独写入该用户的 Harness 凭据存储；不需要密钥的提供方可以省略此字段。若提供方配置已写入、但凭据存储随后失败，接口返回 502，并在错误详情中明确标记 `providerCreated: true`，避免调用方误以为整个操作都已回滚。
 
-Swagger UI 位于 `/docs`，OpenAPI 文档位于 `/openapi.json`。在同一浏览器登录后打开 Swagger，可以使用当前登录 Cookie 调试受保护接口。
+Swagger UI 位于 `/docs`，OpenAPI 文档位于 `/openapi.json`。Swagger UI 的 JavaScript、CSS 和图标均随网关镜像提供，不依赖公网 CDN，可在完全离线的局域网中使用。在同一浏览器登录后打开 Swagger，可以使用当前登录 Cookie 调试受保护接口。
+
+## 共享插件管理
+
+管理员访问 `/admin/plugins` 可以管理共享插件：
+
+- 联网环境只需输入 npm 包名（例如 `@scope/plugin`），系统会从 npm Registry 自动发现全部版本并默认选中 `latest`，管理员确认具体版本后再导入；
+- 离线环境上传 npm `.tgz` 包；离线包必须包含运行所需内容，且依赖已经内置或存在于离线包中；
+- 对全部启用用户或指定用户批量执行安装、卸载、启用和停用；
+- 可把当前策略设为新用户默认策略，并在任务列表中查看每个操作的执行状态。
+
+插件的每个版本只在 `data/plugins/releases/` 保存一份只读实体。用户目录中不复制插件文件，SQLite 只记录用户与共享版本的关联和启用状态；启用时由用户 profile 引用容器内的版本化解析别名，并在 `profiles/node_modules` 创建指向共享 release 的包名软链接，供插件 patch 解析运行时代码。因此同一版本不会随用户数量增加而重复占用磁盘，不同版本也可以同时服务不同用户。
+
+版本发现接口为 `GET /api/gateway/v1/admin/plugins/registry-versions?packageName=@scope/plugin`，返回全部可用版本及 `latest` 当前指向的精确版本。选择版本后调用 `POST /api/gateway/v1/admin/plugins/online`：
+
+```json
+{
+  "packageName": "@scope/plugin",
+  "version": "1.2.3"
+}
+```
+
+版本发现只读取 Registry 元数据，不下载或保存插件，也不会创建任务；导入接口收到选择的精确版本后才下载插件并创建异步任务。
+
+离线导入接口为 `POST /api/gateway/v1/admin/plugins/offline`，请求体直接使用 `application/octet-stream` 传输 `.tgz`。批量策略接口为 `POST /api/gateway/v1/admin/plugin-jobs`，导入和策略操作均异步返回任务 ID，可通过 `GET /api/gateway/v1/admin/plugin-jobs/{job_id}` 查询结果。所有接口仅允许管理员 Cookie 或 Bearer Token 调用。
+
+默认使用 pnpm/npm 的公共 registry。私有源可以在 `.env` 中设置 `DSH_PLUGIN_NPM_REGISTRY` 和只读的 `DSH_PLUGIN_NPM_TOKEN`。安装过程使用独立低权限账号，禁用 npm lifecycle scripts，并将发布目录改为只读。插件自身仍会进入被分配用户的 DSH 进程执行，所以只能导入可信插件。
 
 ## 上传文件
 

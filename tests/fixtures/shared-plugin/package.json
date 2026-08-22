@@ -1,0 +1,13 @@
+{
+  "name": "@dsh-test/shared-plugin",
+  "version": "1.0.0",
+  "description": "Minimal offline fixture for the shared plugin manager",
+  "files": [
+    "cordis.patch.yml"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "cordis.patch.yml"
+    }
+  }
+}

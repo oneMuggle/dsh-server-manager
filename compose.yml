@@ -7,11 +7,15 @@ services:
       context: .
       dockerfile: docker/Dockerfile
     ports:
-      - "3080:8080"
+      - "3081:8080"
     cap_add:
       - NET_ADMIN
+    security_opt:
+      - seccomp=unconfined
     environment:
       DSH_ADMIN_PASSWORD: ${DSH_ADMIN_PASSWORD:?请在 .env 中设置 DSH_ADMIN_PASSWORD}
+      DSH_PLUGIN_NPM_REGISTRY: ${DSH_PLUGIN_NPM_REGISTRY:-}
+      DSH_PLUGIN_NPM_TOKEN: ${DSH_PLUGIN_NPM_TOKEN:-}
     volumes:
       - ./data:/var/lib/dsh
     restart: unless-stopped

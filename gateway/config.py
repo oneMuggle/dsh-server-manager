@@ -8,7 +8,7 @@ from pathlib import Path
 @dataclass(frozen=True, slots=True)
 class Config:
     state_root: Path
-    registry_path: Path
+    user_database_path: Path
     session_secret_path: Path
     upload_spool_path: Path
     control_socket_path: Path
@@ -24,7 +24,7 @@ class Config:
         gateway_root = state_root / "gateway"
         return cls(
             state_root=state_root,
-            registry_path=gateway_root / "users.json",
+            user_database_path=gateway_root / "users.db",
             session_secret_path=gateway_root / "session-secret",
             upload_spool_path=gateway_root / "uploads",
             control_socket_path=Path(

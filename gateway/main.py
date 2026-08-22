@@ -6,12 +6,15 @@ import os
 import re
 import secrets
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Annotated, Literal
 
 import aiohttp
-from fastapi import FastAPI, HTTPException, Request, Security, WebSocket
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Security, WebSocket
+from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
-from fastapi.security import APIKeyCookie
+from fastapi.security import APIKeyCookie, HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
 from .auth import (
@@ -29,28 +32,40 @@ from .harness_rpc import (
     call_harness_rpc,
 )
 from .pages import admin_page, auth_page
+from .plugin_ui import plugin_admin_page
+from .plugins import PluginStoreError, get_job, list_jobs, list_plugins
 from .providers import (
     PROVIDER_NAMESPACE,
     CreateCustomProvider,
     CustomProviderCreated,
 )
 from .proxy import cookie_from_websocket, proxy_http, proxy_websocket
-from .registry import RegistryError, get_user, load_registry
+from .registry import RegistryError, get_user, list_users
 from .supervisor_client import (
     SupervisorError,
+    assign_plugin,
     create_user,
+    discover_plugin_versions,
+    import_offline_plugin,
+    import_online_plugin,
     install_upload,
     list_upload_directories,
 )
 
 LOGGER = logging.getLogger("dsh.gateway")
 USERNAME_PATTERN = re.compile(r"^[a-z][a-z0-9_-]{2,23}$")
+SWAGGER_UI_STATIC_DIR = Path(__file__).parent / "static" / "swagger-ui"
 config = Config.from_environment()
 login_ip_limiter = FixedWindowLimiter(attempts=30, seconds=60)
 login_account_limiter = FixedWindowLimiter(attempts=10, seconds=60)
 register_limiter = FixedWindowLimiter(attempts=5, seconds=300)
 session_cookie = APIKeyCookie(name=config.cookie_name, auto_error=False)
+bearer_token = HTTPBearer(auto_error=False)
 SessionCookie = Annotated[str | None, Security(session_cookie)]
+BearerToken = Annotated[
+    HTTPAuthorizationCredentials | None,
+    Security(bearer_token),
+]
 
 
 class Credentials(BaseModel):
@@ -63,6 +78,12 @@ class Credentials(BaseModel):
 class CurrentUser(BaseModel):
     username: str
     role: Literal["admin", "user"]
+
+
+class AuthenticatedUser(CurrentUser):
+    access_token: str = Field(alias="accessToken")
+    token_type: Literal["Bearer"] = Field(alias="tokenType")
+    expires_in: int = Field(alias="expiresIn")
 
 
 class RegisteredUser(BaseModel):
@@ -80,6 +101,32 @@ class DirectoryListing(BaseModel):
     directory: str
     directories: list[str]
     truncated: bool
+
+
+class OnlinePluginImport(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    package_name: str = Field(alias="packageName", min_length=1, max_length=214)
+    version: str = Field(default="latest", min_length=1, max_length=64)
+
+
+class PluginScope(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal["all", "users"]
+    usernames: list[str] = Field(default_factory=list, max_length=10000)
+    includeDisabledUsers: bool = False
+
+
+class PluginAssignment(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    action: Literal["install", "uninstall", "enable", "disable"]
+    plugin_id: int = Field(alias="pluginId", gt=0)
+    version_id: int | None = Field(default=None, alias="versionId", gt=0)
+    scope: PluginScope
+    enabled_after_install: bool = Field(default=True, alias="enabledAfterInstall")
+    apply_to_future_users: bool = Field(default=False, alias="applyToFutureUsers")
 
 
 def _rpc_failure(error: HarnessRpcError, operation: str) -> HTTPException:
@@ -108,7 +155,7 @@ def _resolve_user(token: str | None) -> dict | None:
     if payload is None:
         return None
     try:
-        user = get_user(config.registry_path, payload["sub"])
+        user = get_user(config.user_database_path, payload["sub"])
     except RegistryError:
         LOGGER.exception("failed to load registry")
         return None
@@ -123,6 +170,25 @@ def _request_user(request: Request) -> dict | None:
     return _resolve_user(request.cookies.get(config.cookie_name))
 
 
+def _api_token(
+    request: Request,
+    cookie: SessionCookie,
+    bearer: BearerToken,
+) -> str | None:
+    if "authorization" in request.headers:
+        if bearer is None:
+            raise HTTPException(
+                status_code=401,
+                detail="无效的 Authorization 请求头",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        return bearer.credentials
+    return cookie
+
+
+ApiToken = Annotated[str | None, Depends(_api_token)]
+
+
 def _user_role(user: dict) -> Literal["admin", "user"]:
     return "admin" if user.get("role") == "admin" else "user"
 
@@ -130,7 +196,11 @@ def _user_role(user: dict) -> Literal["admin", "user"]:
 def _require_session(token: str | None) -> dict:
     user = _resolve_user(token)
     if not user:
-        raise HTTPException(status_code=401, detail="未登录")
+        raise HTTPException(
+            status_code=401,
+            detail="未登录",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     return user
 
 
@@ -141,21 +211,42 @@ def _require_admin(token: str | None) -> dict:
     return user
 
 
-def _set_session(response: Response, user: dict) -> None:
+def _make_session_token(user: dict) -> str:
+    return make_session(
+        str(user["username"]),
+        int(user["password_version"]),
+        app.state.session_secret,
+        config.session_ttl_seconds,
+    )
+
+
+def _set_session(response: Response, token: str) -> None:
     response.set_cookie(
         key=config.cookie_name,
-        value=make_session(
-            str(user["username"]),
-            int(user["password_version"]),
-            app.state.session_secret,
-            config.session_ttl_seconds,
-        ),
+        value=token,
         max_age=config.session_ttl_seconds,
         httponly=True,
         secure=config.cookie_secure,
         samesite="lax",
         path="/",
     )
+
+
+def _authenticated_response(user: dict, status_code: int = 200) -> JSONResponse:
+    token = _make_session_token(user)
+    response = JSONResponse(
+        {
+            "username": user["username"],
+            "role": _user_role(user),
+            "accessToken": token,
+            "tokenType": "Bearer",
+            "expiresIn": config.session_ttl_seconds,
+        },
+        status_code=status_code,
+        headers={"Cache-Control": "no-store", "Pragma": "no-cache"},
+    )
+    _set_session(response, token)
+    return response
 
 
 @asynccontextmanager
@@ -170,13 +261,34 @@ async def lifespan(application: FastAPI):
 
 app = FastAPI(
     title="DSH LAN Gateway",
-    description="DeepSeek Harness 多用户局域网网关。受保护接口使用登录后生成的 HttpOnly Cookie。",
-    version="0.3.0",
-    docs_url="/docs",
+    description=(
+        "DeepSeek Harness 多用户局域网网关。受保护接口支持登录后生成的 "
+        "HttpOnly Cookie 或 Bearer Token。"
+    ),
+    version="0.4.0",
+    docs_url=None,
     redoc_url=None,
     openapi_url="/openapi.json",
     lifespan=lifespan,
 )
+app.mount(
+    "/static/swagger-ui",
+    StaticFiles(directory=SWAGGER_UI_STATIC_DIR),
+    name="swagger-ui-static",
+)
+
+
+@app.get("/docs", include_in_schema=False)
+async def swagger_ui(request: Request) -> HTMLResponse:
+    root_path = request.scope.get("root_path", "").rstrip("/")
+    static_url = f"{root_path}/static/swagger-ui"
+    return get_swagger_ui_html(
+        openapi_url=f"{root_path}{app.openapi_url}",
+        title=f"{app.title} - Swagger UI",
+        swagger_js_url=f"{static_url}/swagger-ui-bundle.js",
+        swagger_css_url=f"{static_url}/swagger-ui.css",
+        swagger_favicon_url=f"{static_url}/favicon-32x32.png",
+    )
 
 
 @app.get("/api/gateway/v1/health", tags=["系统"], summary="健康检查")
@@ -201,7 +313,7 @@ async def register_page(request: Request) -> Response:
 @app.post(
     "/api/gateway/v1/auth/register",
     status_code=201,
-    response_model=CurrentUser,
+    response_model=AuthenticatedUser,
     tags=["认证"],
     summary="注册账号",
 )
@@ -230,17 +342,12 @@ async def register(request: Request, credentials: Credentials) -> Response:
         "password_version": result["password_version"],
         "role": result["role"],
     }
-    response = JSONResponse(
-        {"username": result["username"], "role": result["role"]},
-        status_code=201,
-    )
-    _set_session(response, user)
-    return response
+    return _authenticated_response(user, status_code=201)
 
 
 @app.post(
     "/api/gateway/v1/auth/login",
-    response_model=CurrentUser,
+    response_model=AuthenticatedUser,
     tags=["认证"],
     summary="登录",
 )
@@ -250,7 +357,7 @@ async def login(request: Request, credentials: Credentials) -> Response:
     if not login_ip_limiter.allow(client) or not login_account_limiter.allow(account_key):
         raise HTTPException(status_code=429, detail="登录请求过于频繁")
     try:
-        user = get_user(config.registry_path, credentials.username)
+        user = get_user(config.user_database_path, credentials.username)
     except RegistryError as error:
         raise HTTPException(status_code=503, detail="用户服务不可用") from error
 
@@ -266,11 +373,7 @@ async def login(request: Request, credentials: Credentials) -> Response:
     if not valid or user is None:
         raise HTTPException(status_code=401, detail="用户名或密码错误")
 
-    response = JSONResponse(
-        {"username": user["username"], "role": _user_role(user)}
-    )
-    _set_session(response, user)
-    return response
+    return _authenticated_response(user)
 
 
 @app.post(
@@ -291,7 +394,7 @@ async def logout() -> Response:
     tags=["认证"],
     summary="查询当前账号",
 )
-async def me(token: SessionCookie) -> CurrentUser:
+async def me(token: ApiToken) -> CurrentUser:
     user = _require_session(token)
     return CurrentUser(username=str(user["username"]), role=_user_role(user))
 
@@ -306,16 +409,26 @@ async def management_page(request: Request) -> Response:
     return HTMLResponse(admin_page(), headers={"Cache-Control": "no-store"})
 
 
+@app.get("/admin/plugins", response_class=HTMLResponse, include_in_schema=False)
+async def plugin_management_page(request: Request) -> Response:
+    user = _request_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    if _user_role(user) != "admin":
+        raise HTTPException(status_code=403, detail="需要管理员权限")
+    return HTMLResponse(plugin_admin_page(), headers={"Cache-Control": "no-store"})
+
+
 @app.get(
     "/api/gateway/v1/admin/users",
     response_model=RegisteredUsers,
     tags=["管理"],
     summary="列出注册用户",
 )
-async def registered_users(token: SessionCookie) -> RegisteredUsers:
+async def registered_users(token: ApiToken) -> RegisteredUsers:
     _require_admin(token)
     try:
-        registry = load_registry(config.registry_path)
+        stored_users = list_users(config.user_database_path)
     except RegistryError as error:
         raise HTTPException(status_code=503, detail="用户服务不可用") from error
     users = [
@@ -325,11 +438,191 @@ async def registered_users(token: SessionCookie) -> RegisteredUsers:
             disabled=user.get("disabled") is True,
             created_at=str(user.get("created_at", "")),
         )
-        for user in registry["users"].values()
-        if isinstance(user, dict)
+        for user in stored_users
     ]
     users.sort(key=lambda user: (user.created_at, user.username))
     return RegisteredUsers(users=users)
+
+
+@app.get(
+    "/api/gateway/v1/admin/plugins",
+    tags=["插件管理"],
+    summary="列出共享插件及用户状态",
+)
+async def registered_plugins(token: ApiToken) -> dict:
+    _require_admin(token)
+    try:
+        return {"plugins": list_plugins(config.user_database_path)}
+    except PluginStoreError as error:
+        raise HTTPException(status_code=503, detail="插件存储不可用") from error
+
+
+@app.get(
+    "/api/gateway/v1/admin/plugin-jobs",
+    tags=["插件管理"],
+    summary="列出插件任务",
+)
+async def plugin_jobs(token: ApiToken, limit: int = 30) -> dict:
+    _require_admin(token)
+    try:
+        return {"jobs": list_jobs(config.user_database_path, limit)}
+    except PluginStoreError as error:
+        raise HTTPException(status_code=503, detail="插件存储不可用") from error
+
+
+@app.get(
+    "/api/gateway/v1/admin/plugin-jobs/{job_id}",
+    tags=["插件管理"],
+    summary="查询插件任务详情",
+)
+async def plugin_job(job_id: str, token: ApiToken) -> dict:
+    _require_admin(token)
+    try:
+        job = get_job(config.user_database_path, job_id)
+    except PluginStoreError as error:
+        raise HTTPException(status_code=503, detail="插件存储不可用") from error
+    if job is None:
+        raise HTTPException(status_code=404, detail="插件任务不存在")
+    return job
+
+
+@app.post(
+    "/api/gateway/v1/admin/plugins/online",
+    status_code=202,
+    tags=["插件管理"],
+    summary="按 npm 包名导入共享插件",
+)
+async def online_plugin_import(payload: OnlinePluginImport, token: ApiToken) -> dict:
+    user = _require_admin(token)
+    try:
+        return await import_online_plugin(
+            config.control_socket_path,
+            payload.package_name,
+            payload.version,
+            str(user["username"]),
+        )
+    except SupervisorError as error:
+        status = 400 if error.code == "bad_request" else 503
+        raise HTTPException(status_code=status, detail=str(error)) from error
+
+
+@app.get(
+    "/api/gateway/v1/admin/plugins/registry-versions",
+    tags=["插件管理"],
+    summary="发现 npm 插件的所有可用版本",
+)
+async def registry_plugin_versions(
+    token: ApiToken,
+    package_name: Annotated[
+        str,
+        Query(alias="packageName", min_length=1, max_length=214),
+    ],
+) -> dict:
+    _require_admin(token)
+    try:
+        return await discover_plugin_versions(
+            config.control_socket_path,
+            package_name,
+        )
+    except SupervisorError as error:
+        status = 400 if error.code == "bad_request" else 503
+        raise HTTPException(status_code=status, detail=str(error)) from error
+
+
+@app.post(
+    "/api/gateway/v1/admin/plugins/offline",
+    status_code=202,
+    tags=["插件管理"],
+    summary="导入离线共享插件包",
+    openapi_extra={
+        "requestBody": {
+            "required": True,
+            "content": {
+                "application/octet-stream": {
+                    "schema": {"type": "string", "format": "binary"}
+                }
+            },
+        }
+    },
+)
+async def offline_plugin_import(request: Request, token: ApiToken) -> dict:
+    user = _require_admin(token)
+    content_length = request.headers.get("content-length")
+    if content_length is not None:
+        try:
+            declared_size = int(content_length)
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail="无效的 Content-Length") from error
+        if declared_size <= 0 or declared_size > config.max_upload_bytes:
+            raise HTTPException(status_code=413, detail="离线插件包必须小于 100 MB")
+
+    spool_name = f"{secrets.token_hex(16)}.plugin.tgz"
+    spool_path = config.upload_spool_path / spool_name
+    descriptor = os.open(
+        spool_path,
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
+        0o600,
+    )
+    size = 0
+    try:
+        async for chunk in request.stream():
+            size += len(chunk)
+            if size > config.max_upload_bytes:
+                raise HTTPException(status_code=413, detail="离线插件包不能超过 100 MB")
+            remaining = memoryview(chunk)
+            while remaining:
+                written = os.write(descriptor, remaining)
+                if not written:
+                    raise OSError("failed to write plugin spool")
+                remaining = remaining[written:]
+        if size == 0:
+            raise HTTPException(status_code=400, detail="离线插件包不能为空")
+        os.fsync(descriptor)
+    except BaseException:
+        os.close(descriptor)
+        descriptor = -1
+        spool_path.unlink(missing_ok=True)
+        raise
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+
+    try:
+        return await import_offline_plugin(
+            config.control_socket_path,
+            spool_name,
+            str(user["username"]),
+        )
+    except SupervisorError as error:
+        spool_path.unlink(missing_ok=True)
+        status = 400 if error.code == "bad_request" else 503
+        raise HTTPException(status_code=status, detail=str(error)) from error
+
+
+@app.post(
+    "/api/gateway/v1/admin/plugin-jobs",
+    status_code=202,
+    tags=["插件管理"],
+    summary="批量安装、卸载、启用或停用插件",
+)
+async def create_plugin_assignment(payload: PluginAssignment, token: ApiToken) -> dict:
+    user = _require_admin(token)
+    if payload.scope.type == "users" and not payload.scope.usernames:
+        raise HTTPException(status_code=400, detail="至少选择一个用户")
+    try:
+        return await assign_plugin(
+            config.control_socket_path,
+            plugin_action=payload.action,
+            plugin_id=payload.plugin_id,
+            plugin_version_id=payload.version_id,
+            scope=payload.scope.model_dump(),
+            enabled_after_install=payload.enabled_after_install,
+            apply_to_future_users=payload.apply_to_future_users,
+            created_by=str(user["username"]),
+        )
+    except SupervisorError as error:
+        status = 400 if error.code == "bad_request" else 503
+        raise HTTPException(status_code=status, detail=str(error)) from error
 
 
 @app.post(
@@ -347,11 +640,11 @@ async def registered_users(token: SessionCookie) -> RegisteredUsers:
 async def create_custom_provider(
     username: str,
     provider: CreateCustomProvider,
-    token: SessionCookie,
+    token: ApiToken,
 ) -> CustomProviderCreated:
     _require_admin(token)
     try:
-        target = get_user(config.registry_path, username)
+        target = get_user(config.user_database_path, username)
     except RegistryError as error:
         raise HTTPException(status_code=503, detail="用户服务不可用") from error
     if target is None:
@@ -483,7 +776,7 @@ async def create_custom_provider(
     summary="列出当前用户工作区目录",
 )
 async def upload_directories(
-    token: SessionCookie,
+    token: ApiToken,
     directory: str = ".",
 ) -> DirectoryListing:
     user = _require_session(token)
@@ -514,7 +807,7 @@ async def upload_directories(
 )
 async def upload_file(
     request: Request,
-    token: SessionCookie,
+    token: ApiToken,
     directory: str = ".",
     name: str = "",
 ) -> Response:
