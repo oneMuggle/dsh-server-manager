@@ -1,9 +1,10 @@
 """Gateway route packages."""
 
-from . import auth, file, management, plugin, proxy, system, user
+from . import auth, compatibility, file, management, plugin, proxy, system, user
 
 __all__ = [
     "auth",
+    "compatibility",
     "file",
     "management",
     "plugin",

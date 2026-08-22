@@ -55,6 +55,21 @@ class GatewayConfigTests(unittest.TestCase):
         with patch.dict("os.environ", {}, clear=True):
             self.assertFalse(Config.from_environment().registration_enabled)
 
+    def test_compatibility_api_keys_and_bounded_ticket_ttl_use_old_names(self) -> None:
+        with patch.dict(
+            "os.environ",
+            {
+                "DSH_REGISTER_API_KEY": "register-secret",
+                "DSH_LOGIN_API_KEY": "login-secret",
+                "LOGIN_TICKET_TTL": "999",
+            },
+            clear=True,
+        ):
+            config = Config.from_environment()
+        self.assertEqual(config.register_api_key, "register-secret")
+        self.assertEqual(config.login_api_key, "login-secret")
+        self.assertEqual(config.login_ticket_ttl_seconds, 300)
+
 
 class SupervisorConfigTests(unittest.TestCase):
     def test_environment_derives_all_state_paths_from_one_root(self) -> None:
@@ -84,6 +99,9 @@ class GatewayProcessTests(unittest.IsolatedAsyncioTestCase):
         arguments = gateway_command(SupervisorConfig.from_environment())
         self.assertIn("DSM_STATE_ROOT=/var/lib/dsh", arguments)
         self.assertIn("DSM_CONTROL_SOCKET=/run/dsh/control.sock", arguments)
+        self.assertIn("DSH_REGISTER_API_KEY=", arguments)
+        self.assertIn("DSH_LOGIN_API_KEY=", arguments)
+        self.assertIn("LOGIN_TICKET_TTL=60", arguments)
         self.assertFalse(any(value.startswith("DSH_STATE_ROOT=") for value in arguments))
 
     async def test_gateway_starts_from_the_dsm_installation_root(self) -> None:

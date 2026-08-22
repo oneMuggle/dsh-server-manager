@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Protocol
 
 import aiohttp
 
@@ -9,7 +10,6 @@ from common.storage.users import RegistryError, get_user
 
 from ..schemas.providers import (
     PROVIDER_NAMESPACE,
-    CreateCustomProvider,
     CustomProviderCreated,
 )
 from .harness import (
@@ -32,6 +32,15 @@ class ProviderOperationError(Exception):
         return self.message
 
 
+class ProviderDefinition(Protocol):
+    provider_id: str
+    api_key: str | None
+
+    def credential_ref(self) -> str: ...
+
+    def provider_profile(self) -> dict: ...
+
+
 def _rpc_error(error: HarnessRpcError, operation: str) -> ProviderOperationError:
     if isinstance(error, HarnessRpcTransportError):
         return ProviderOperationError("transport", f"{operation}：{error}")
@@ -48,7 +57,9 @@ async def create_provider(
     database_path: Path,
     session: aiohttp.ClientSession,
     username: str,
-    provider: CreateCustomProvider,
+    provider: ProviderDefinition,
+    *,
+    replace: bool = False,
 ) -> CustomProviderCreated:
     try:
         target = get_user(database_path, username)
@@ -78,7 +89,7 @@ async def create_provider(
         for row in providers_value["providers"]
         if isinstance(row, dict) and isinstance(row.get("provider"), str)
     }
-    if provider.provider_id in taken:
+    if provider.provider_id in taken and not replace:
         raise ProviderOperationError("conflict", "该提供方 ID 已存在")
 
     if not isinstance(settings_value, dict) or not isinstance(

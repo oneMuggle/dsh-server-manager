@@ -223,6 +223,30 @@ class ProviderServiceTests(unittest.IsolatedAsyncioTestCase):
                 )
         self.assertEqual(caught.exception.code, "conflict")
 
+    async def test_compatibility_call_can_replace_a_duplicate_provider(self) -> None:
+        with patch(
+            "gateway.services.providers.call_harness_rpc",
+            new=AsyncMock(
+                side_effect=[
+                    {"providers": [{"provider": "my-gateway"}]},
+                    self.settings(),
+                    {"credentials": {"MY_GATEWAY_API_KEY": {"writable": True}}},
+                    {"saved": True},
+                    {"saved": True},
+                ]
+            ),
+        ) as rpc:
+            result = await create_provider(
+                self.database,
+                self.session,
+                "alice",
+                self.provider(),
+                replace=True,
+            )
+
+        self.assertEqual(result.provider_id, "my-gateway")
+        self.assertEqual(rpc.await_args_list[3].args[2], "settings.mutate")
+
     async def test_rejects_unwritable_settings(self) -> None:
         with patch(
             "gateway.services.providers.call_harness_rpc",

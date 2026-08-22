@@ -118,6 +118,7 @@ class Supervisor:
             self._schedule_plugin_reconcile(username)
         return {
             "username": username,
+            "port": user["port"],
             "password_version": 1,
             "role": user["role"],
             "disabled": False,

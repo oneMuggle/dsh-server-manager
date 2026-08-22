@@ -17,6 +17,19 @@ def _environment_bool(name: str, default: bool) -> bool:
     raise ValueError(f"{name} must be true or false")
 
 
+def _environment_int(
+    name: str,
+    default: int,
+    minimum: int,
+    maximum: int,
+) -> int:
+    try:
+        value = int(os.environ.get(name, str(default)))
+    except ValueError:
+        value = default
+    return min(maximum, max(minimum, value))
+
+
 @dataclass(frozen=True, slots=True)
 class SupervisorConfig:
     state_root: Path
@@ -32,6 +45,9 @@ class SupervisorConfig:
     gateway_port: int
     cookie_secure: bool
     registration_enabled: bool
+    register_api_key: str
+    login_api_key: str
+    login_ticket_ttl_seconds: int
     harness_cli: str
     max_upload_bytes: int
 
@@ -55,6 +71,11 @@ class SupervisorConfig:
             cookie_secure=_environment_bool("DSM_COOKIE_SECURE", False),
             registration_enabled=_environment_bool(
                 "DSM_REGISTRATION_ENABLED", False
+            ),
+            register_api_key=os.environ.get("DSH_REGISTER_API_KEY", ""),
+            login_api_key=os.environ.get("DSH_LOGIN_API_KEY", ""),
+            login_ticket_ttl_seconds=_environment_int(
+                "LOGIN_TICKET_TTL", 60, 10, 300
             ),
             harness_cli="/opt/deepseek-harness/apps/cli/lib/bin.js",
             max_upload_bytes=100 * 1024 * 1024,

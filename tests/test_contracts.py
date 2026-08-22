@@ -27,6 +27,17 @@ from gateway.routers.user.providers import create_custom_provider
 
 
 PUBLIC_RESPONSES = {
+    ("post", "/api/register"): ["200", "400", "401", "409"],
+    ("post", "/api/users/{username}/provider"): [
+        "200",
+        "400",
+        "401",
+        "404",
+        "409",
+        "422",
+        "502",
+    ],
+    ("post", "/api/login-ticket"): ["200", "400", "401", "404", "503"],
     ("post", "/api/v1/plugins/builtins/jobs"): ["202", "422"],
     ("get", "/api/v1/plugins/jobs"): ["200", "422"],
     ("post", "/api/v1/plugins/jobs"): ["202", "422"],
@@ -56,6 +67,17 @@ SCHEMA_PROPERTIES = {
     "CreateCustomProvider": ["api", "apiKey", "baseURL", "displayName", "models", "providerId"],
     "Credentials": ["password", "username"],
     "CreateManagedUser": ["password", "username"],
+    "CompatibleLoginTicket": ["expiresIn", "loginUrl", "ok"],
+    "CompatibleProviderProfile": [
+        "api",
+        "apiKeyEnv",
+        "baseURL",
+        "model",
+        "models",
+        "name",
+    ],
+    "CompatibleProviderRegistration": ["models", "ok", "provider", "ref", "user"],
+    "CompatibleRegistration": ["ok", "port", "user"],
     "CurrentUser": ["role", "username"],
     "DirectoryListing": ["directories", "directory", "truncated"],
     "OnlinePluginImport": ["packageName", "version"],
@@ -194,6 +216,21 @@ class OpenApiContractTests(unittest.TestCase):
         }
         self.assertEqual(actual, PUBLIC_RESPONSES)
 
+    def test_compatibility_apis_document_the_old_json_request_bodies(self) -> None:
+        schema = app.openapi()
+        for path in (
+            "/api/register",
+            "/api/users/{username}/provider",
+            "/api/login-ticket",
+        ):
+            with self.subTest(path=path):
+                operation = schema["paths"][path]["post"]
+                self.assertTrue(operation["requestBody"]["required"])
+                self.assertIn(
+                    "application/json",
+                    operation["requestBody"]["content"],
+                )
+
     def test_security_schemes_and_public_model_fields_are_stable(self) -> None:
         schema = app.openapi()
         self.assertEqual(
@@ -212,6 +249,16 @@ class OpenApiContractTests(unittest.TestCase):
                             "tokenUrl": "/api/v1/auth/token",
                         }
                     },
+                },
+                "DSHRegistrationKey": {
+                    "type": "http",
+                    "description": "DSH_REGISTER_API_KEY",
+                    "scheme": "bearer",
+                },
+                "DSHLoginKey": {
+                    "type": "http",
+                    "description": "DSH_LOGIN_API_KEY",
+                    "scheme": "bearer",
                 },
             },
         )

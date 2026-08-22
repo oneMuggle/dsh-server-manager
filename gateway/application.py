@@ -8,8 +8,9 @@ from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
-from .routers import auth, file, management, plugin, proxy, system, user
+from .routers import auth, compatibility, file, management, plugin, proxy, system, user
 from .runtime import SWAGGER_UI_STATIC_DIR, config
+from .services.compatibility import LoginTicketStore
 from .web import MANAGEMENT_STATIC_ROOT as MANAGEMENT_STATIC_DIR
 
 
@@ -17,6 +18,9 @@ from .web import MANAGEMENT_STATIC_ROOT as MANAGEMENT_STATIC_DIR
 async def lifespan(application: FastAPI):
     application.state.session_secret = config.session_secret_path.read_bytes()
     application.state.http = aiohttp.ClientSession(auto_decompress=False)
+    application.state.login_tickets = LoginTicketStore(
+        config.login_ticket_ttl_seconds
+    )
     try:
         yield
     finally:
@@ -66,6 +70,7 @@ def create_app() -> FastAPI:
     application.include_router(file.router)
     application.include_router(plugin.router)
     application.include_router(management.router)
+    application.include_router(compatibility.router)
     application.include_router(proxy.router)
     return application
 

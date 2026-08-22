@@ -131,6 +131,24 @@ Bearer Token 与浏览器 Cookie 使用同一套签名、七天有效期和失�
 
 用户数据使用 SQLite 存储，用户名、UID 和租户端口均有唯一索引，数据库文件位于 `docker/data/gateway/users.db`。
 
+### dsh-server-deployment 兼容 API
+
+DSM 保留了 `dsh-server-deployment` 的三个机器对机器接口，旧调用方可以保持路径、请求体和响应处理不变：
+
+- `POST /api/register`：添加用户；
+- `POST /api/users/{username}/provider`：添加或替换同名自定义提供商，未传模型时请求 `<baseURL>/models` 自动发现；
+- `POST /api/login-ticket`：为已有用户返回 10–300 秒内有效的一次性登录链接。
+
+在 `.env` 配置下列变量后才会启用；留空时对应接口统一返回 401：
+
+```dotenv
+DSH_REGISTER_API_KEY=<注册与提供商接口密钥>
+DSH_LOGIN_API_KEY=<独立的登录换票密钥>
+LOGIN_TICKET_TTL=60
+```
+
+`DSH_LOGIN_API_KEY` 可以以任意已有账号登录，权限高于普通用户 Token，必须与 `DSH_REGISTER_API_KEY` 分开保管，且只允许可信后端使用。登录 ticket 只在网关内存中保留 SHA-256 摘要，成功或失败消费后都不能重放。
+
 ## 管理后台与 Swagger
 
 固定账号 `admin` 访问 `/admin` 可以查看已注册用户的用户名、角色、状态和注册时间。用户列表接口为 `GET /api/v1/users`，未登录请求返回 401，普通用户请求返回 403；接口不会返回密码记录、Linux UID、租户端口或用户配置。
