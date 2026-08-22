@@ -1,0 +1,23 @@
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #10131a; color: #f4f6fb; }
+    main { width: min(1180px, calc(100vw - 36px)); margin: 36px auto; }
+    header, .row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    header { justify-content: space-between; margin-bottom: 22px; }
+    h1, h2 { margin: 0; } h2 { font-size: 18px; margin-bottom: 14px; }
+    nav { display: flex; gap: 9px; }
+    a, button, input, select { border: 1px solid #465066; border-radius: 8px; padding: 9px 12px; background: #181d27; color: inherit; font: inherit; }
+    a { text-decoration: none; } button { cursor: pointer; } button.primary { background: #315efb; border-color: #315efb; }
+    button:disabled, select:disabled { cursor: not-allowed; opacity: .55; }
+    button.danger { color: #ffbaba; border-color: #733b3b; }
+    section { margin: 16px 0; padding: 18px; border: 1px solid #303746; border-radius: 14px; background: #181d27; }
+    form { display: flex; gap: 9px; flex-wrap: wrap; } form input[type=text] { min-width: 230px; }
+    .grow { flex: 1; } .muted { color: #aeb9d2; font-size: 13px; }
+    #message { min-height: 22px; color: #b9c8f6; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { text-align: left; padding: 11px 9px; border-top: 1px solid #303746; vertical-align: middle; }
+    th { color: #aeb9d2; font-size: 12px; }
+    .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+    .badge { padding: 3px 7px; border-radius: 999px; background: #27416e; font-size: 12px; }
+    .ok { background: #174c37; } .bad { background: #5a2929; }
+    @media (max-width: 760px) { .hide-small { display:none; } main { width: calc(100vw - 20px); } }

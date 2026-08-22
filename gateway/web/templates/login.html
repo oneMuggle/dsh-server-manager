@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>登录 · DeepSeek Harness</title>
+  <link rel="stylesheet" href="/assets/auth.css">
+</head>
+<body><main>
+  <h1>DeepSeek Harness 登录</h1>
+  <form id="auth-form">
+    <label>用户名<input name="username" autocomplete="username" required minlength="3" maxlength="24" pattern="[a-z][a-z0-9_-]{2,23}"></label>
+    <label>密码<input name="password" type="password" autocomplete="current-password" required minlength="8" maxlength="256"></label>
+    <div id="error"></div>
+    <button type="submit">登录</button>
+  </form>
+  <p><a class="secondary-button" href="/register">注册新账号</a></p>
+</main>
+<script src="/assets/auth-login.js"></script></body></html>

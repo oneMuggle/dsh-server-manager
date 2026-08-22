@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>插件管理 · DeepSeek Harness</title>
+  <link rel="stylesheet" href="/assets/plugins.css">
+</head>
+<body><main>
+  <header><div><h1>共享插件管理</h1><div id="message">正在加载…</div></div>
+    <nav><a href="/admin">用户管理</a><a href="/">返回 DSH</a><button id="refresh" class="primary">刷新</button><button id="logout">退出登录</button></nav>
+  </header>
+  <section><h2>导入插件</h2><div class="row">
+    <form id="online" class="grow"><input id="online-package" name="packageName" required placeholder="npm 包名，例如 @scope/plugin"><button id="discover-versions" type="submit">发现版本</button><select id="online-version" aria-label="插件版本" disabled><option>请先发现版本</option></select><button id="import-online" class="primary" type="button" disabled>导入所选版本</button></form>
+    <form id="offline"><input name="file" type="file" accept=".tgz,application/gzip" required><button>离线导入</button></form>
+  </div><p class="muted">联网导入会先从 Registry 读取全部版本，选择后才下载该精确版本。插件实体只保存一份；安装脚本不会执行。</p></section>
+  <section><h2>插件与用户策略</h2><div class="row">
+    <label>目标 <select id="target"><option value="all">所有启用用户</option></select></label>
+    <label><input id="future" type="checkbox"> 同步应用到后续新用户</label>
+  </div><div id="plugins"></div></section>
+  <section><h2>最近任务</h2><div id="jobs"></div></section>
+</main>
+<script src="/assets/plugins.js"></script></body></html>

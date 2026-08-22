@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>管理后台 · DeepSeek Harness</title>
+  <link rel="stylesheet" href="/assets/admin.css">
+</head>
+<body><main>
+  <header>
+    <div><h1>用户管理</h1><div id="message">正在加载用户列表…</div></div>
+    <nav><a href="/admin/plugins">插件管理</a><a href="/">返回 DSH</a><a href="/docs">Swagger</a><button id="refresh" class="primary" type="button">刷新</button><button id="logout" type="button">退出登录</button></nav>
+  </header>
+  <section class="panel">
+    <table>
+      <thead><tr><th>用户名</th><th>角色</th><th>状态</th><th>注册时间</th></tr></thead>
+      <tbody id="users"></tbody>
+    </table>
+  </section>
+</main>
+<script src="/assets/admin.js"></script></body></html>

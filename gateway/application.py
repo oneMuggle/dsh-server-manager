@@ -32,6 +32,7 @@ from .harness_rpc import (
 )
 from .pages import admin_page, auth_page
 from .plugin_ui import plugin_admin_page
+from .web import STATIC_ROOT as MANAGEMENT_STATIC_DIR
 from .plugins import PluginStoreError, get_job, list_jobs, list_plugins
 from .providers import (
     PROVIDER_NAMESPACE,
@@ -192,6 +193,11 @@ app.mount(
     "/static/swagger-ui",
     StaticFiles(directory=SWAGGER_UI_STATIC_DIR),
     name="swagger-ui-static",
+)
+app.mount(
+    "/assets",
+    StaticFiles(directory=MANAGEMENT_STATIC_DIR),
+    name="management-static",
 )
 
 
