@@ -98,9 +98,67 @@ class DependencyDirectionTests(unittest.TestCase):
         self.assertEqual([alias.name for alias in imports[0].names], ["app"])
 
     def test_obsolete_gateway_compatibility_modules_are_removed(self) -> None:
-        for name in ("plugins.py", "registry.py", "supervisor_client.py"):
+        for name in (
+            "plugins.py",
+            "registry.py",
+            "supervisor_client.py",
+            "auth.py",
+            "harness_rpc.py",
+            "providers.py",
+            "proxy.py",
+            "pages.py",
+            "plugin_ui.py",
+            "upload_ui.py",
+            "routers/admin_users.py",
+        ):
             with self.subTest(name=name):
                 self.assertFalse((PROJECT_ROOT / "gateway" / name).exists())
+
+    def test_gateway_schemas_do_not_depend_on_runtime_layers(self) -> None:
+        forbidden_roots = {
+            "gateway.routers",
+            "gateway.services",
+            "gateway.proxy",
+            "gateway.auth",
+            "gateway.harness_rpc",
+            "gateway.providers",
+            "gateway.pages",
+            "gateway.plugin_ui",
+            "gateway.upload_ui",
+        }
+        violations: dict[str, list[str]] = {}
+        for path in (PROJECT_ROOT / "gateway" / "schemas").rglob("*.py"):
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            imports = {
+                node.module
+                for node in ast.walk(tree)
+                if isinstance(node, ast.ImportFrom) and node.module
+            }
+            imports.update(
+                alias.name
+                for node in ast.walk(tree)
+                if isinstance(node, ast.Import)
+                for alias in node.names
+            )
+            forbidden = sorted(
+                name
+                for name in imports
+                if any(
+                    name == root or name.startswith(f"{root}.")
+                    for root in forbidden_roots
+                )
+            )
+            if forbidden:
+                violations[path.relative_to(PROJECT_ROOT).as_posix()] = forbidden
+        self.assertEqual(violations, {})
+
+    def test_gateway_proxy_is_a_package_with_focused_modules(self) -> None:
+        proxy_root = PROJECT_ROOT / "gateway" / "proxy"
+        self.assertTrue(proxy_root.is_dir())
+        self.assertEqual(
+            {path.name for path in proxy_root.glob("*.py")},
+            {"__init__.py", "headers.py", "http.py", "transforms.py", "websocket.py"},
+        )
 
     def test_supervisor_handles_the_concrete_firewall_error(self) -> None:
         self.assertIs(
