@@ -1,33 +1,16 @@
 from __future__ import annotations
 
 import asyncio
-import errno
-import json
 import logging
 import os
 import pwd
 import re
 import secrets
 import signal
-import socket
 import stat
-import struct
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import Any
 
-from common.contracts.control import (
-    AssignPluginRequest,
-    CreateUserRequest,
-    DiscoverPluginVersionsRequest,
-    ImportOfflinePluginRequest,
-    ImportOnlinePluginRequest,
-    InstallUploadRequest,
-    ListUploadDirectoriesRequest,
-    error_response,
-    parse_control_request,
-    success_response,
-)
-from common.errors import ControlRequestError
 from common.storage.assignments import apply_plugin_defaults
 from common.storage.plugin_catalog import get_plugin_version
 from common.storage.plugin_jobs import create_job, unfinished_job_ids
@@ -41,13 +24,9 @@ from common.storage.users import (
 )
 from common.security import hash_password
 
-from .firewall import FirewallError, apply_firewall
-from .plugins import (
-    PluginOperationError,
-    SharedPluginManager,
-    validate_package_name,
-    validate_requested_version,
-)
+from .firewall import apply_firewall
+from .ipc_server import ControlServer
+from .plugins import SharedPluginManager, validate_package_name, validate_requested_version
 from .tenants import TenantManager
 from .users import (
     admin_password_from_environment as _admin_password_from_environment,
@@ -56,6 +35,10 @@ from .users import (
     normalize_user_roles as _normalize_user_roles,
     provision_os_user as _provision_os_user,
     valid_password_record as _valid_password_record,
+)
+from .uploads import (
+    install_uploaded_file as _install_uploaded_file,
+    list_upload_directories as _list_upload_directories,
 )
 
 logging.basicConfig(
@@ -125,251 +108,17 @@ def _ensure_gateway_state() -> None:
             pass
 
 
-def _upload_directory_parts(value: str) -> tuple[str, ...]:
-    if value in {"", "."}:
-        return ()
-    if len(value) > 512 or "\\" in value:
-        raise ValueError("无效的目标目录")
-    path = PurePosixPath(value)
-    if path.is_absolute():
-        raise ValueError("目标目录必须相对于 workspace")
-    parts = path.parts
-    if any(part in {"", ".", ".."} or part.startswith(".") for part in parts):
-        raise ValueError("目标目录不能包含隐藏目录、. 或 ..")
-    if any(len(part.encode("utf-8")) > 255 for part in parts):
-        raise ValueError("目标目录名称过长")
-    return parts
-
-
-def _validate_upload_filename(value: str) -> str:
-    if (
-        not value
-        or value in {".", ".."}
-        or value.startswith(".")
-        or "/" in value
-        or "\\" in value
-        or "\x00" in value
-        or len(value.encode("utf-8")) > 255
-    ):
-        raise ValueError("无效的文件名")
-    return value
-
-
-def _open_owned_directory(
-    parent_fd: int,
-    name: str,
-    uid: int,
-    gid: int,
-    create: bool = True,
-) -> int:
-    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0)
-    try:
-        descriptor = os.open(name, flags, dir_fd=parent_fd)
-    except FileNotFoundError:
-        if not create:
-            raise ValueError("目标目录不存在")
-        os.mkdir(name, 0o700, dir_fd=parent_fd)
-        os.chown(name, uid, gid, dir_fd=parent_fd, follow_symlinks=False)
-        descriptor = os.open(name, flags, dir_fd=parent_fd)
-    except OSError as error:
-        if error.errno in {errno.EACCES, errno.ELOOP, errno.ENOTDIR}:
-            raise ValueError("目标目录不是安全的普通目录") from error
-        raise
-    metadata = os.fstat(descriptor)
-    if not stat.S_ISDIR(metadata.st_mode) or metadata.st_uid != uid:
-        os.close(descriptor)
-        raise ValueError("目标目录不属于当前用户")
-    return descriptor
-
-
-def _list_upload_directories(
-    user: dict[str, Any],
-    directory: str,
-) -> dict[str, Any]:
-    parts = _upload_directory_parts(directory)
-    uid = int(user["uid"])
-    gid = pwd.getpwnam(str(user["os_user"])).pw_gid
-    tenant_root = USERS_ROOT / str(user["username"])
-    workspace_fd = -1
-    target_fd = -1
-    root_fd = os.open(
-        tenant_root,
-        os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0),
-    )
-    try:
-        home_fd = _open_owned_directory(root_fd, "home", uid, gid, create=False)
-    finally:
-        os.close(root_fd)
-    try:
-        workspace_fd = _open_owned_directory(
-            home_fd,
-            "workspace",
-            uid,
-            gid,
-            create=False,
-        )
-    finally:
-        os.close(home_fd)
-
-    try:
-        directory_fd = workspace_fd
-        target_fd = directory_fd
-        for part in parts:
-            next_fd = _open_owned_directory(
-                directory_fd,
-                part,
-                uid,
-                gid,
-                create=False,
-            )
-            if directory_fd != workspace_fd:
-                os.close(directory_fd)
-            directory_fd = next_fd
-            target_fd = directory_fd
-
-        names: list[str] = []
-        with os.scandir(target_fd) as entries:
-            for entry in entries:
-                if entry.name.startswith(".") or not entry.is_dir(follow_symlinks=False):
-                    continue
-                try:
-                    metadata = entry.stat(follow_symlinks=False)
-                except OSError:
-                    continue
-                if metadata.st_uid == uid:
-                    names.append(entry.name)
-        names.sort(key=str.casefold)
-        truncated = len(names) > 2000
-        if truncated:
-            names = names[:2000]
-    finally:
-        if target_fd >= 0 and target_fd != workspace_fd:
-            os.close(target_fd)
-        if workspace_fd >= 0:
-            os.close(workspace_fd)
-
-    return {
-        "directory": "." if not parts else "/".join(parts),
-        "directories": names,
-        "truncated": truncated,
-    }
-
-
-def _install_uploaded_file(
-    user: dict[str, Any],
-    spool_name: str,
-    directory: str,
-    filename: str,
-    expected_size: int,
-) -> dict[str, Any]:
-    if not UPLOAD_SPOOL_PATTERN.fullmatch(spool_name):
-        raise ValueError("无效的上传临时文件")
-    if expected_size < 0 or expected_size > MAX_UPLOAD_BYTES:
-        raise ValueError("上传文件大小无效")
-    parts = _upload_directory_parts(directory)
-    filename = _validate_upload_filename(filename)
-    uid = int(user["uid"])
-    gid = pwd.getpwnam(str(user["os_user"])).pw_gid
-    gateway_uid = pwd.getpwnam(GATEWAY_USER).pw_uid
-
-    source_path = UPLOAD_ROOT / spool_name
-    source_fd = os.open(
-        source_path,
-        os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0),
-    )
-    workspace_fd = -1
-    target_fd = -1
-    temporary_name = f".upload-{secrets.token_hex(12)}.tmp"
-    try:
-        source_metadata = os.fstat(source_fd)
-        if (
-            not stat.S_ISREG(source_metadata.st_mode)
-            or source_metadata.st_uid != gateway_uid
-            or source_metadata.st_size != expected_size
-        ):
-            raise ValueError("上传临时文件校验失败")
-
-        tenant_root = USERS_ROOT / str(user["username"])
-        root_fd = os.open(
-            tenant_root,
-            os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0),
-        )
-        try:
-            home_fd = _open_owned_directory(root_fd, "home", uid, gid)
-        finally:
-            os.close(root_fd)
-        try:
-            workspace_fd = _open_owned_directory(home_fd, "workspace", uid, gid)
-        finally:
-            os.close(home_fd)
-
-        directory_fd = workspace_fd
-        target_fd = directory_fd
-        for part in parts:
-            next_fd = _open_owned_directory(directory_fd, part, uid, gid)
-            if directory_fd != workspace_fd:
-                os.close(directory_fd)
-            directory_fd = next_fd
-            target_fd = directory_fd
-
-        destination_fd = os.open(
-            temporary_name,
-            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0),
-            0o600,
-            dir_fd=target_fd,
-        )
-        try:
-            while True:
-                chunk = os.read(source_fd, 64 * 1024)
-                if not chunk:
-                    break
-                remaining = memoryview(chunk)
-                while remaining:
-                    written = os.write(destination_fd, remaining)
-                    if written == 0:
-                        raise OSError("failed to write uploaded file")
-                    remaining = remaining[written:]
-            os.fchmod(destination_fd, 0o600)
-            os.fchown(destination_fd, uid, gid)
-            os.fsync(destination_fd)
-        finally:
-            os.close(destination_fd)
-        os.replace(
-            temporary_name,
-            filename,
-            src_dir_fd=target_fd,
-            dst_dir_fd=target_fd,
-        )
-        os.fsync(target_fd)
-    except BaseException:
-        if target_fd >= 0:
-            try:
-                os.unlink(temporary_name, dir_fd=target_fd)
-            except FileNotFoundError:
-                pass
-        raise
-    finally:
-        if target_fd >= 0 and target_fd != workspace_fd:
-            os.close(target_fd)
-        if workspace_fd >= 0:
-            os.close(workspace_fd)
-        os.close(source_fd)
-        source_path.unlink(missing_ok=True)
-
-    normalized_directory = "." if not parts else "/".join(parts)
-    return {
-        "directory": normalized_directory,
-        "filename": filename,
-        "size": expected_size,
-    }
-
-
 class Supervisor:
     def __init__(self) -> None:
         self.tenants = TenantManager()
         self.registry_lock = asyncio.Lock()
         self.fatal = asyncio.Event()
-        self.server: asyncio.AbstractServer | None = None
+        self.control = ControlServer(
+            owner=self,
+            gateway_user=GATEWAY_USER,
+            fatal=self.fatal,
+            logger=LOGGER,
+        )
         self.gateway: asyncio.subprocess.Process | None = None
         self.background_tasks: set[asyncio.Task[None]] = set()
         self.plugins = SharedPluginManager(
@@ -558,78 +307,6 @@ class Supervisor:
             raise ValueError("用户不存在或已停用")
         return await asyncio.to_thread(_list_upload_directories, user, directory)
 
-    def _authorized_peer(self, writer: asyncio.StreamWriter) -> bool:
-        transport_socket = writer.get_extra_info("socket")
-        if transport_socket is None or not hasattr(socket, "SO_PEERCRED"):
-            return False
-        credentials = transport_socket.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12)
-        _, uid, _ = struct.unpack("3i", credentials)
-        return uid == pwd.getpwnam(GATEWAY_USER).pw_uid
-
-    async def handle_control(
-        self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
-    ) -> None:
-        try:
-            if not self._authorized_peer(writer):
-                response = {"ok": False, "code": "forbidden", "message": "forbidden"}
-            else:
-                line = await asyncio.wait_for(reader.readline(), timeout=10)
-                request = parse_control_request(json.loads(line))
-                action = request.action
-                try:
-                    if isinstance(request, CreateUserRequest):
-                        result = await self.create_user(request.username, request.password)
-                    elif isinstance(request, InstallUploadRequest):
-                        result = await self.install_upload(
-                            request.username,
-                            request.spool_name,
-                            request.directory,
-                            request.filename,
-                            request.size,
-                        )
-                    elif isinstance(request, ListUploadDirectoriesRequest):
-                        result = await self.list_upload_directories(
-                            request.username,
-                            request.directory,
-                        )
-                    elif isinstance(request, ImportOnlinePluginRequest):
-                        result = await self.import_online_plugin(
-                            request.package_name,
-                            request.requested_version,
-                            request.created_by,
-                        )
-                    elif isinstance(request, DiscoverPluginVersionsRequest):
-                        result = await self.discover_plugin_versions(request.package_name)
-                    elif isinstance(request, ImportOfflinePluginRequest):
-                        result = await self.import_offline_plugin(
-                            request.spool_name,
-                            request.created_by,
-                        )
-                    elif isinstance(request, AssignPluginRequest):
-                        result = await self.assign_plugin(request.model_dump())
-                    else:
-                        raise ValueError("unknown action")
-                    response = success_response(**result)
-                except FileExistsError:
-                    response = error_response("conflict", "用户名已存在")
-                except (TypeError, ValueError, PluginOperationError) as error:
-                    response = error_response("bad_request", str(error))
-                except FirewallError:
-                    LOGGER.exception("firewall update failed; stopping container")
-                    self.fatal.set()
-                    response = error_response("supervisor_error", "租户隔离更新失败")
-                except Exception:
-                    LOGGER.exception("control action %s failed", action)
-                    response = error_response("supervisor_error", "操作失败")
-        except (asyncio.TimeoutError, json.JSONDecodeError, ControlRequestError):
-            response = error_response("bad_request", "invalid request")
-        try:
-            writer.write(json.dumps(response, ensure_ascii=False).encode("utf-8") + b"\n")
-            await writer.drain()
-        finally:
-            writer.close()
-            await writer.wait_closed()
-
     async def start(self) -> None:
         _ensure_gateway_state()
         registry = _load_registry()
@@ -658,14 +335,7 @@ class Supervisor:
             self.plugins.prepare_user_profile(user)
         await self.plugins.start(unfinished_job_ids(REGISTRY_PATH))
 
-        RUNTIME_ROOT.mkdir(parents=True, exist_ok=True)
-        gateway_account = pwd.getpwnam(GATEWAY_USER)
-        os.chown(RUNTIME_ROOT, 0, gateway_account.pw_gid)
-        os.chmod(RUNTIME_ROOT, 0o770)
-        CONTROL_SOCKET.unlink(missing_ok=True)
-        self.server = await asyncio.start_unix_server(self.handle_control, CONTROL_SOCKET)
-        os.chown(CONTROL_SOCKET, 0, gateway_account.pw_gid)
-        os.chmod(CONTROL_SOCKET, 0o660)
+        await self.control.start(RUNTIME_ROOT, CONTROL_SOCKET)
 
         for user in registry["users"].values():
             if user.get("disabled") is not True:
@@ -692,9 +362,7 @@ class Supervisor:
         LOGGER.info("gateway listening on 0.0.0.0:%s", GATEWAY_PORT)
 
     async def stop(self) -> None:
-        if self.server:
-            self.server.close()
-            await self.server.wait_closed()
+        await self.control.stop(CONTROL_SOCKET)
         if self.gateway and self.gateway.returncode is None:
             try:
                 os.killpg(self.gateway.pid, signal.SIGTERM)
@@ -712,7 +380,6 @@ class Supervisor:
             task.cancel()
         await asyncio.gather(*self.background_tasks, return_exceptions=True)
         await self.tenants.stop()
-        CONTROL_SOCKET.unlink(missing_ok=True)
 
 
 async def main() -> int:

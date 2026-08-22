@@ -17,6 +17,7 @@ from common.contracts.control import (
 from gateway.main import app
 from common.storage.users import initialize_registry
 from gateway.supervisor_client import SupervisorError, _request
+from supervisor.ipc_server import ControlServer
 
 
 PUBLIC_RESPONSES = {
@@ -182,8 +183,30 @@ class _MemoryWriter:
     async def wait_closed(self) -> None:
         return None
 
+    def get_extra_info(self, name: str) -> None:
+        return None
+
 
 class SupervisorWireContractTests(unittest.IsolatedAsyncioTestCase):
+    async def test_control_server_rejects_a_peer_without_credentials(self) -> None:
+        reader = asyncio.StreamReader()
+        reader.feed_data(b'{"action":"create_user"}\n')
+        reader.feed_eof()
+        writer = _MemoryWriter()
+        server = ControlServer(
+            owner=object(),
+            gateway_user="dsh-gateway",
+            fatal=asyncio.Event(),
+        )
+
+        await server.handle(reader, writer)
+
+        self.assertEqual(
+            json.loads(bytes(writer.body)),
+            {"ok": False, "code": "forbidden", "message": "forbidden"},
+        )
+        self.assertTrue(writer.closed)
+
     async def test_request_uses_compact_newline_delimited_json(self) -> None:
         reader = asyncio.StreamReader()
         reader.feed_data(b'{"ok":true,"username":"alice"}\n')

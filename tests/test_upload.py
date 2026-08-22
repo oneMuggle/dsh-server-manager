@@ -4,7 +4,7 @@ import os
 import unittest
 from unittest.mock import patch
 
-from supervisor.main import _upload_directory_parts, _validate_upload_filename
+from supervisor.uploads import upload_directory_parts, validate_upload_filename
 from supervisor.users import (
     admin_password_from_environment,
     normalize_user_roles,
@@ -14,19 +14,19 @@ from supervisor.users import (
 
 class UploadPathTests(unittest.TestCase):
     def test_relative_directory_is_split(self) -> None:
-        self.assertEqual(_upload_directory_parts("reports/2026"), ("reports", "2026"))
-        self.assertEqual(_upload_directory_parts("."), ())
+        self.assertEqual(upload_directory_parts("reports/2026"), ("reports", "2026"))
+        self.assertEqual(upload_directory_parts("."), ())
 
     def test_directory_escape_and_hidden_paths_are_rejected(self) -> None:
         for value in ("/tmp", "../state", "reports/../../state", ".hidden", "a/.hidden"):
             with self.subTest(value=value), self.assertRaises(ValueError):
-                _upload_directory_parts(value)
+                upload_directory_parts(value)
 
     def test_filename_must_be_one_visible_path_segment(self) -> None:
-        self.assertEqual(_validate_upload_filename("报告.txt"), "报告.txt")
+        self.assertEqual(validate_upload_filename("报告.txt"), "报告.txt")
         for value in ("", ".env", "../secret", "nested/file.txt", "a\\b.txt"):
             with self.subTest(value=value), self.assertRaises(ValueError):
-                _validate_upload_filename(value)
+                validate_upload_filename(value)
 
 
 class SupervisorRegressionTests(unittest.TestCase):
