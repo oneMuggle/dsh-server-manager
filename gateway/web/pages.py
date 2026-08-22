@@ -15,9 +15,18 @@ def auth_page(mode: str, *, registration_enabled: bool = True) -> str:
     return page.replace("<!-- REGISTRATION_LINK -->", registration_link)
 
 
+def _management_page(name: str, title: str, message: str) -> str:
+    header = (
+        render_template("management-header.html")
+        .replace("<!-- PAGE_TITLE -->", title)
+        .replace("<!-- PAGE_MESSAGE -->", message)
+    )
+    return render_template(name).replace("<!-- MANAGEMENT_HEADER -->", header)
+
+
 def admin_page() -> str:
-    return render_template("admin.html")
+    return _management_page("admin.html", "用户管理", "正在加载用户列表…")
 
 
 def plugin_admin_page() -> str:
-    return render_template("plugins.html")
+    return _management_page("plugins.html", "插件管理", "正在加载…")

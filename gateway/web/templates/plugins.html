@@ -7,9 +7,7 @@
   <link rel="stylesheet" href="/gateway-assets/plugins.css?v=3">
 </head>
 <body><main>
-  <header><div><h1>插件管理</h1><div id="message">正在加载…</div></div>
-    <nav><a href="/admin">用户管理</a><a href="/">返回 DSH</a><button id="refresh" class="primary">刷新</button><button id="logout">退出登录</button></nav>
-  </header>
+  <!-- MANAGEMENT_HEADER -->
   <section><h2>导入插件</h2><div class="row">
     <form id="online" class="grow"><input id="online-package" name="packageName" required placeholder="npm 包名，例如 @scope/plugin"><button id="discover-versions" type="submit">发现版本</button><select id="online-version" aria-label="插件版本" disabled><option>请先发现版本</option></select><button id="import-online" class="primary" type="button" disabled>导入所选版本</button></form>
     <form id="offline"><input name="file" type="file" accept=".tgz,application/gzip" required><button>离线导入</button></form>

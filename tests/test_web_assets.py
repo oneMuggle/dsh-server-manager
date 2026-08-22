@@ -84,18 +84,45 @@ class ManagementWebAssetTests(unittest.TestCase):
 
     def test_management_pages_are_loaded_from_templates(self) -> None:
         login_template = (TEMPLATE_ROOT / "login.html").read_text()
-        pages = {
+        auth_pages = {
             "login.html": auth_page("login", registration_enabled=False),
             "register.html": auth_page("register"),
-            "admin.html": admin_page(),
-            "plugins.html": plugin_admin_page(),
         }
-        for name, rendered in pages.items():
+        for name, rendered in auth_pages.items():
             with self.subTest(name=name):
                 expected = (TEMPLATE_ROOT / name).read_text()
                 if name == "login.html":
                     expected = login_template.replace("<!-- REGISTRATION_LINK -->", "")
                 self.assertEqual(rendered, expected)
+
+        header_template = (TEMPLATE_ROOT / "management-header.html").read_text()
+        management_pages = {
+            "admin.html": (admin_page(), "用户管理", "正在加载用户列表…"),
+            "plugins.html": (plugin_admin_page(), "插件管理", "正在加载…"),
+        }
+        for name, (rendered, title, message) in management_pages.items():
+            with self.subTest(name=name):
+                header = (
+                    header_template.replace("<!-- PAGE_TITLE -->", title)
+                    .replace("<!-- PAGE_MESSAGE -->", message)
+                )
+                expected = (TEMPLATE_ROOT / name).read_text().replace(
+                    "<!-- MANAGEMENT_HEADER -->",
+                    header,
+                )
+                self.assertEqual(rendered, expected)
+
+    def test_management_pages_share_header_and_open_swagger_in_new_tab(self) -> None:
+        header = (TEMPLATE_ROOT / "management-header.html").read_text()
+        self.assertIn('href="/admin"', header)
+        self.assertIn('href="/admin/plugins"', header)
+        self.assertIn(
+            'href="/docs" target="_blank" rel="noopener noreferrer"',
+            header,
+        )
+        for rendered in (admin_page(), plugin_admin_page()):
+            self.assertNotIn("<!-- MANAGEMENT_HEADER -->", rendered)
+            self.assertEqual(rendered.count('href="/docs"'), 1)
 
     def test_templates_reference_local_styles_and_scripts(self) -> None:
         expected = {
