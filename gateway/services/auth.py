@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import hmac
@@ -12,6 +13,7 @@ from fastapi import HTTPException
 from fastapi.responses import JSONResponse, Response
 from starlette.requests import HTTPConnection
 
+from common.security import hash_password, verify_password
 from common.storage.users import RegistryError, get_user
 
 from ..runtime import config
@@ -84,6 +86,24 @@ class FixedWindowLimiter:
             return False
         window.attempts += 1
         return True
+
+
+async def verify_credentials(username: str, password: str) -> dict | None:
+    """Return the enabled user when the supplied credentials are valid."""
+
+    user = get_user(config.user_database_path, username)
+    if user and user.get("disabled") is not True:
+        valid = await asyncio.to_thread(
+            verify_password,
+            password,
+            user.get("password", {}),
+        )
+        if valid:
+            return user
+    else:
+        # Keep the missing and disabled-user paths computationally comparable.
+        await asyncio.to_thread(hash_password, password)
+    return None
 
 
 def resolve_user(request: HTTPConnection, token: str | None) -> dict | None:

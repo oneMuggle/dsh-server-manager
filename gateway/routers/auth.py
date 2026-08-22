@@ -6,8 +6,8 @@ import re
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
-from common.security import hash_password, verify_password
-from common.storage.users import RegistryError, get_user
+from common.security import hash_password
+from common.storage.users import RegistryError
 
 from ..dependencies import ApiToken
 from ..runtime import config
@@ -18,6 +18,7 @@ from ..services.auth import (
     request_user,
     require_session,
     user_role,
+    verify_credentials,
 )
 from ..services.supervisor import SupervisorError, create_user
 from ..web.pages import auth_page
@@ -38,11 +39,16 @@ def client_key(request: Request) -> str:
 async def login_page(request: Request) -> Response:
     if request_user(request):
         return RedirectResponse("/", status_code=303)
-    return HTMLResponse(auth_page("login"), headers={"Cache-Control": "no-store"})
+    return HTMLResponse(
+        auth_page("login", registration_enabled=config.registration_enabled),
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @router.get("/register", response_class=HTMLResponse, include_in_schema=False)
 async def register_page(request: Request) -> Response:
+    if not config.registration_enabled:
+        raise HTTPException(status_code=404, detail="页面不存在")
     if request_user(request):
         return RedirectResponse("/", status_code=303)
     return HTMLResponse(auth_page("register"), headers={"Cache-Control": "no-store"})
@@ -56,6 +62,8 @@ async def register_page(request: Request) -> Response:
     summary="注册账号",
 )
 async def register(request: Request, credentials: Credentials) -> Response:
+    if not config.registration_enabled:
+        raise HTTPException(status_code=403, detail="注册功能已关闭")
     if not register_limiter.allow(client_key(request)):
         raise HTTPException(status_code=429, detail="注册请求过于频繁")
     if not USERNAME_PATTERN.fullmatch(credentials.username):
@@ -95,20 +103,10 @@ async def login(request: Request, credentials: Credentials) -> Response:
     if not login_ip_limiter.allow(client) or not login_account_limiter.allow(account_key):
         raise HTTPException(status_code=429, detail="登录请求过于频繁")
     try:
-        user = get_user(config.user_database_path, credentials.username)
+        user = await verify_credentials(credentials.username, credentials.password)
     except RegistryError as error:
         raise HTTPException(status_code=503, detail="用户服务不可用") from error
-
-    valid = bool(user and user.get("disabled") is not True)
-    if valid:
-        valid = await asyncio.to_thread(
-            verify_password,
-            credentials.password,
-            user.get("password", {}),
-        )
-    else:
-        await asyncio.to_thread(hash_password, credentials.password)
-    if not valid or user is None:
+    if user is None:
         raise HTTPException(status_code=401, detail="用户名或密码错误")
 
     return authenticated_response(request, user)

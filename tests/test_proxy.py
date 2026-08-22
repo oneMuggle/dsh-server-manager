@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import unittest
+from dataclasses import replace
 from unittest.mock import patch
 
 from fastapi import HTTPException, Request
@@ -19,10 +20,10 @@ from gateway.proxy.transforms import (
     patch_connection_module,
     patch_html,
 )
-from gateway.routers.auth import login
+from gateway.routers.auth import login, register, register_page
 from gateway.runtime import SWAGGER_UI_STATIC_DIR, config
 from gateway.schemas.auth import Credentials
-from gateway.services.auth import parse_session
+from gateway.services.auth import parse_session, verify_credentials
 from gateway.web import MANAGEMENT_STATIC_ROOT
 from gateway.web.fragments import ADMIN_WIDGET, LOGOUT_WIDGET
 from gateway.web.pages import admin_page, auth_page
@@ -124,6 +125,48 @@ class AuthenticationPageTests(unittest.TestCase):
         self.assertIn('href="/login"', page)
         self.assertIn("返回登录", page)
 
+    def test_login_page_hides_registration_when_disabled(self) -> None:
+        page = auth_page("login", registration_enabled=False)
+        self.assertNotIn('href="/register"', page)
+        self.assertNotIn("注册新账号", page)
+
+    def test_disabled_registration_page_is_not_found(self) -> None:
+        request = Request({"type": "http", "headers": [], "app": app})
+        with (
+            patch(
+                "gateway.routers.auth.config",
+                replace(config, registration_enabled=False),
+            ),
+            self.assertRaises(HTTPException) as caught,
+        ):
+            asyncio.run(register_page(request))
+        self.assertEqual(caught.exception.status_code, 404)
+
+    def test_disabled_registration_api_rejects_before_creating_user(self) -> None:
+        request = Request(
+            {
+                "type": "http",
+                "method": "POST",
+                "path": "/api/gateway/v1/auth/register",
+                "headers": [],
+                "client": ("192.0.2.10", 12345),
+                "app": app,
+            }
+        )
+        credentials = Credentials(username="alice", password="change-me-123")
+        with (
+            patch(
+                "gateway.routers.auth.config",
+                replace(config, registration_enabled=False),
+            ),
+            patch("gateway.routers.auth.create_user") as create,
+            self.assertRaises(HTTPException) as caught,
+        ):
+            asyncio.run(register(request, credentials))
+        self.assertEqual(caught.exception.status_code, 403)
+        self.assertEqual(caught.exception.detail, "注册功能已关闭")
+        create.assert_not_called()
+
 
 class ManagementPageTests(unittest.TestCase):
     def test_management_page_loads_users_and_links_swagger(self) -> None:
@@ -213,6 +256,34 @@ class ManagementPageTests(unittest.TestCase):
 
 
 class TokenAuthenticationTests(unittest.TestCase):
+    def test_shared_credential_verification_accepts_an_enabled_user(self) -> None:
+        user = {
+            "username": "alice",
+            "role": "user",
+            "disabled": False,
+            "password": hash_password("change-me-123"),
+            "password_version": 1,
+        }
+        with patch("gateway.services.auth.get_user", return_value=user):
+            authenticated = asyncio.run(
+                verify_credentials("alice", "change-me-123")
+            )
+        self.assertIs(authenticated, user)
+
+    def test_shared_credential_verification_rejects_disabled_user(self) -> None:
+        user = {
+            "username": "alice",
+            "role": "user",
+            "disabled": True,
+            "password": hash_password("change-me-123"),
+            "password_version": 1,
+        }
+        with patch("gateway.services.auth.get_user", return_value=user):
+            authenticated = asyncio.run(
+                verify_credentials("alice", "change-me-123")
+            )
+        self.assertIsNone(authenticated)
+
     def test_login_returns_same_token_in_body_and_http_only_cookie(self) -> None:
         user = {
             "username": "alice",
@@ -233,7 +304,7 @@ class TokenAuthenticationTests(unittest.TestCase):
         )
         app.state.session_secret = b"test-session-secret"
 
-        with patch("gateway.routers.auth.get_user", return_value=user):
+        with patch("gateway.services.auth.get_user", return_value=user):
             response = asyncio.run(
                 login(request, Credentials(username="alice", password="change-me-123"))
             )

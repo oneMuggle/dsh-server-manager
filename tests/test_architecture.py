@@ -6,6 +6,7 @@ from pathlib import Path
 
 import common.security
 import gateway.routers.auth
+import gateway.services.auth
 import supervisor.application
 import supervisor.main
 import supervisor.tenants.firewall
@@ -100,7 +101,10 @@ class DependencyDirectionTests(unittest.TestCase):
 
     def test_gateway_auth_reuses_common_password_primitives(self) -> None:
         self.assertIs(gateway.routers.auth.hash_password, common.security.hash_password)
-        self.assertIs(gateway.routers.auth.verify_password, common.security.verify_password)
+        self.assertIs(
+            gateway.services.auth.verify_password,
+            common.security.verify_password,
+        )
 
     def test_gateway_has_one_runtime_config_instance(self) -> None:
         calls = []
