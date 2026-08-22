@@ -73,7 +73,7 @@ class ManagementWebAssetTests(unittest.TestCase):
         )
         self.assertEqual(gateway_status, 200)
         self.assertIn(
-            b"/api/gateway/v1/admin/users",
+            b"/api/v1/users",
             gateway_body,
         )
 

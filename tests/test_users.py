@@ -7,7 +7,7 @@ from fastapi import HTTPException, Request
 from pydantic import ValidationError
 
 from gateway.application import app
-from gateway.routers.users import (
+from gateway.routers.user.accounts import (
     create_managed_user,
     delete_managed_user,
     managed_user,
@@ -21,7 +21,7 @@ def _request(method: str = "GET") -> Request:
         {
             "type": "http",
             "method": method,
-            "path": "/api/gateway/v1/admin/users/alice",
+            "path": "/api/v1/users/alice",
             "headers": [],
             "app": app,
         }
@@ -53,8 +53,8 @@ class ManagedUserApiTests(unittest.IsolatedAsyncioTestCase):
             "uid": 20001,
         }
         with (
-            patch("gateway.routers.users.require_admin"),
-            patch("gateway.routers.users.get_user", return_value=stored),
+            patch("gateway.routers.user.accounts.require_admin"),
+            patch("gateway.routers.user.accounts.get_user", return_value=stored),
         ):
             result = await managed_user("alice", _request(), None)
         self.assertEqual(
@@ -76,8 +76,8 @@ class ManagedUserApiTests(unittest.IsolatedAsyncioTestCase):
         }
         supervisor = AsyncMock(return_value=created)
         with (
-            patch("gateway.routers.users.require_admin"),
-            patch("gateway.routers.users.create_user", supervisor),
+            patch("gateway.routers.user.accounts.require_admin"),
+            patch("gateway.routers.user.accounts.create_user", supervisor),
         ):
             result = await create_managed_user(
                 _request("POST"),
@@ -98,8 +98,8 @@ class ManagedUserApiTests(unittest.IsolatedAsyncioTestCase):
         }
         supervisor = AsyncMock(return_value=updated)
         with (
-            patch("gateway.routers.users.require_admin"),
-            patch("gateway.routers.users.update_user", supervisor),
+            patch("gateway.routers.user.accounts.require_admin"),
+            patch("gateway.routers.user.accounts.update_user", supervisor),
         ):
             result = await update_managed_user(
                 "alice",
@@ -122,9 +122,9 @@ class ManagedUserApiTests(unittest.IsolatedAsyncioTestCase):
         ):
             with (
                 self.subTest(code=code),
-                patch("gateway.routers.users.require_admin"),
+                patch("gateway.routers.user.accounts.require_admin"),
                 patch(
-                    "gateway.routers.users.update_user",
+                    "gateway.routers.user.accounts.update_user",
                     AsyncMock(side_effect=SupervisorError("failed", code)),
                 ),
                 self.assertRaises(HTTPException) as caught,
@@ -139,8 +139,8 @@ class ManagedUserApiTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_delete_is_an_authenticated_no_op(self) -> None:
         with (
-            patch("gateway.routers.users.require_admin") as authorize,
-            patch("gateway.routers.users.get_user") as lookup,
+            patch("gateway.routers.user.accounts.require_admin") as authorize,
+            patch("gateway.routers.user.accounts.get_user") as lookup,
             self.assertRaises(HTTPException) as caught,
         ):
             await delete_managed_user("alice", _request("DELETE"), None)

@@ -10,7 +10,7 @@ from .runtime import config
 
 session_cookie = APIKeyCookie(name=config.cookie_name, auto_error=False)
 bearer_token = OAuth2PasswordBearer(
-    tokenUrl="/api/gateway/v1/auth/token",
+    tokenUrl="/api/v1/auth/token",
     auto_error=False,
 )
 SessionCookie = Annotated[str | None, Security(session_cookie)]

@@ -146,13 +146,13 @@ class PluginInputTests(unittest.TestCase):
     def test_admin_page_exposes_online_offline_and_batch_controls(self) -> None:
         page = plugin_admin_page()
         script = (MANAGEMENT_STATIC_ROOT / "plugins.js").read_text()
-        self.assertIn("/api/gateway/v1/admin/plugins/registry-versions", script)
-        self.assertIn("/api/gateway/v1/admin/plugins/online", script)
-        self.assertIn("/api/gateway/v1/admin/plugins/offline", script)
-        self.assertIn("/api/gateway/v1/admin/plugin-jobs", script)
+        self.assertIn("/api/v1/plugins/registry/versions", script)
+        self.assertIn("/api/v1/plugins/imports/registry", script)
+        self.assertIn("/api/v1/plugins/imports/archive", script)
+        self.assertIn("/api/v1/plugins/jobs", script)
         self.assertIn("所有启用用户", page)
         self.assertIn("退出登录", page)
-        self.assertIn("/api/gateway/v1/auth/logout", script)
+        self.assertIn("/api/v1/auth/sessions/current", script)
         self.assertIn("发现版本", page)
         self.assertIn("导入所选版本", page)
 

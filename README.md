@@ -90,7 +90,7 @@ docker/data/
 curl -i -c cookies.txt \
   -H 'Content-Type: application/json' \
   -d '{"username":"alice","password":"change-me-123"}' \
-  http://127.0.0.1:3081/api/gateway/v1/auth/register
+  http://127.0.0.1:3081/api/v1/auth/registrations
 ```
 
 登录、查询当前账号和退出：
@@ -99,10 +99,10 @@ curl -i -c cookies.txt \
 curl -i -c cookies.txt \
   -H 'Content-Type: application/json' \
   -d '{"username":"alice","password":"change-me-123"}' \
-  http://127.0.0.1:3081/api/gateway/v1/auth/login
+  http://127.0.0.1:3081/api/v1/auth/sessions
 
-curl -b cookies.txt http://127.0.0.1:3081/api/gateway/v1/auth/me
-curl -X POST -b cookies.txt http://127.0.0.1:3081/api/gateway/v1/auth/logout
+curl -b cookies.txt http://127.0.0.1:3081/api/v1/auth/sessions/current
+curl -X DELETE -b cookies.txt http://127.0.0.1:3081/api/v1/auth/sessions/current
 ```
 
 用户名长度为 3–24，只能使用小写字母、数字、下划线和连字符，且必须以字母开头；密码至少 8 个字符。
@@ -124,7 +124,7 @@ curl -X POST -b cookies.txt http://127.0.0.1:3081/api/gateway/v1/auth/logout
 ```sh
 curl \
   -H "Authorization: Bearer <signed-token>" \
-  http://127.0.0.1:3081/api/gateway/v1/auth/me
+  http://127.0.0.1:3081/api/v1/auth/sessions/current
 ```
 
 Bearer Token 与浏览器 Cookie 使用同一套签名、七天有效期和失效检查。用户被禁用或 `password_version` 变化后，两者都会失效；退出登录只清除浏览器 Cookie，不会单独撤销已经交给外部程序的 Bearer Token。
@@ -133,9 +133,9 @@ Bearer Token 与浏览器 Cookie 使用同一套签名、七天有效期和失�
 
 ## 管理后台与 Swagger
 
-固定账号 `admin` 访问 `/admin` 可以查看已注册用户的用户名、角色、状态和注册时间。用户列表接口为 `GET /api/gateway/v1/admin/users`，未登录请求返回 401，普通用户请求返回 403；接口不会返回密码记录、Linux UID、租户端口或用户配置。
+固定账号 `admin` 访问 `/admin` 可以查看已注册用户的用户名、角色、状态和注册时间。用户列表接口为 `GET /api/v1/users`，未登录请求返回 401，普通用户请求返回 403；接口不会返回密码记录、Linux UID、租户端口或用户配置。
 
-管理员还可以调用 `POST /api/gateway/v1/admin/users/{username}/providers`，为指定用户添加一个自定义模型提供方。请求字段与 DSH 的“设置 → 模型 → 自定义提供方”一致：
+管理员还可以调用 `POST /api/v1/users/{username}/providers`，为指定用户添加一个自定义模型提供方。请求字段与 DSH 的“设置 → 模型 → 自定义提供方”一致：
 
 ```json
 {
@@ -172,7 +172,7 @@ Swagger UI 位于 `/docs`，OpenAPI 文档位于 `/openapi.json`。Swagger UI �
 
 插件的每个版本只在 `docker/data/plugins/releases/` 保存一份只读实体。用户目录中不复制插件文件，SQLite 只记录用户与共享版本的关联和启用状态；启用时由用户 profile 引用容器内的版本化解析别名，并在 `profiles/node_modules` 创建指向共享 release 的包名软链接，供插件 patch 解析运行时代码。因此同一版本不会随用户数量增加而重复占用磁盘，不同版本也可以同时服务不同用户。
 
-版本发现接口为 `GET /api/gateway/v1/admin/plugins/registry-versions?packageName=@scope/plugin`，返回全部可用版本及 `latest` 当前指向的精确版本。选择版本后调用 `POST /api/gateway/v1/admin/plugins/online`：
+版本发现接口为 `GET /api/v1/plugins/registry/versions?packageName=@scope/plugin`，返回全部可用版本及 `latest` 当前指向的精确版本。选择版本后调用 `POST /api/v1/plugins/imports/registry`：
 
 ```json
 {
@@ -183,7 +183,7 @@ Swagger UI 位于 `/docs`，OpenAPI 文档位于 `/openapi.json`。Swagger UI �
 
 版本发现只读取 Registry 元数据，不下载或保存插件，也不会创建任务；导入接口收到选择的精确版本后才下载插件并创建异步任务。
 
-离线导入接口为 `POST /api/gateway/v1/admin/plugins/offline`，请求体直接使用 `application/octet-stream` 传输 `.tgz`。批量策略接口为 `POST /api/gateway/v1/admin/plugin-jobs`，导入和策略操作均异步返回任务 ID，可通过 `GET /api/gateway/v1/admin/plugin-jobs/{job_id}` 查询结果。所有接口仅允许管理员 Cookie 或 Bearer Token 调用。
+离线导入接口为 `POST /api/v1/plugins/imports/archive`，请求体直接使用 `application/octet-stream` 传输 `.tgz`。批量策略接口为 `POST /api/v1/plugins/jobs`，导入和策略操作均异步返回任务 ID，可通过 `GET /api/v1/plugins/jobs/{job_id}` 查询结果。所有接口仅允许管理员 Cookie 或 Bearer Token 调用。
 
 默认使用 pnpm/npm 的公共 registry。私有源可以在 `.env` 中设置 `DSM_PLUGIN_NPM_REGISTRY` 和只读的 `DSM_PLUGIN_NPM_TOKEN`。安装过程使用独立低权限账号，禁用 npm lifecycle scripts，并将发布目录改为只读。插件自身仍会进入被分配用户的 DSH 进程执行，所以只能导入可信插件。
 

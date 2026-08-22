@@ -20,33 +20,33 @@ from gateway.application import app, create_app
 from common.storage.users import initialize_registry
 from gateway.services.supervisor import SupervisorError, _request
 from supervisor.control import ControlServer
-from gateway.routers.plugins import registry_plugin_versions
-from gateway.routers.providers import create_custom_provider
-from gateway.routers.uploads import upload_directories
+from gateway.routers.plugin.registry import registry_plugin_versions
+from gateway.routers.file.operations import upload_directories
+from gateway.routers.user.providers import create_custom_provider
 
 
 PUBLIC_RESPONSES = {
-    ("get", "/api/gateway/v1/admin/plugin-jobs"): ["200", "422"],
-    ("post", "/api/gateway/v1/admin/plugin-jobs"): ["202", "422"],
-    ("get", "/api/gateway/v1/admin/plugin-jobs/{job_id}"): ["200", "422"],
-    ("get", "/api/gateway/v1/admin/plugins"): ["200"],
-    ("post", "/api/gateway/v1/admin/plugins/offline"): ["202"],
-    ("post", "/api/gateway/v1/admin/plugins/online"): ["202", "422"],
-    ("get", "/api/gateway/v1/admin/plugins/registry-versions"): ["200", "422"],
-    ("get", "/api/gateway/v1/admin/users"): ["200"],
-    ("post", "/api/gateway/v1/admin/users"): ["201", "422"],
-    ("get", "/api/gateway/v1/admin/users/{username}"): ["200", "422"],
-    ("patch", "/api/gateway/v1/admin/users/{username}"): ["200", "422"],
-    ("delete", "/api/gateway/v1/admin/users/{username}"): ["422", "501"],
-    ("post", "/api/gateway/v1/admin/users/{username}/providers"): ["201", "422"],
-    ("post", "/api/gateway/v1/auth/login"): ["200", "422"],
-    ("post", "/api/gateway/v1/auth/logout"): ["204"],
-    ("get", "/api/gateway/v1/auth/me"): ["200"],
-    ("post", "/api/gateway/v1/auth/register"): ["201", "422"],
-    ("post", "/api/gateway/v1/auth/token"): ["200", "422"],
-    ("get", "/api/gateway/v1/files/directories"): ["200", "422"],
-    ("post", "/api/gateway/v1/files/upload"): ["200", "422"],
-    ("get", "/api/gateway/v1/health"): ["200"],
+    ("get", "/api/v1/plugins/jobs"): ["200", "422"],
+    ("post", "/api/v1/plugins/jobs"): ["202", "422"],
+    ("get", "/api/v1/plugins/jobs/{job_id}"): ["200", "422"],
+    ("get", "/api/v1/plugins"): ["200"],
+    ("post", "/api/v1/plugins/imports/archive"): ["202"],
+    ("post", "/api/v1/plugins/imports/registry"): ["202", "422"],
+    ("get", "/api/v1/plugins/registry/versions"): ["200", "422"],
+    ("get", "/api/v1/users"): ["200"],
+    ("post", "/api/v1/users"): ["201", "422"],
+    ("get", "/api/v1/users/{username}"): ["200", "422"],
+    ("patch", "/api/v1/users/{username}"): ["200", "422"],
+    ("delete", "/api/v1/users/{username}"): ["422", "501"],
+    ("post", "/api/v1/users/{username}/providers"): ["201", "422"],
+    ("post", "/api/v1/auth/sessions"): ["200", "422"],
+    ("delete", "/api/v1/auth/sessions/current"): ["204"],
+    ("get", "/api/v1/auth/sessions/current"): ["200"],
+    ("post", "/api/v1/auth/registrations"): ["201", "422"],
+    ("post", "/api/v1/auth/token"): ["200", "422"],
+    ("get", "/api/v1/files/directories"): ["200", "422"],
+    ("post", "/api/v1/files"): ["200", "422"],
+    ("get", "/api/v1/system/health"): ["200"],
 }
 
 SCHEMA_PROPERTIES = {
@@ -133,6 +133,26 @@ TABLE_COLUMNS = {
 
 
 class OpenApiContractTests(unittest.TestCase):
+    def test_versioned_routes_follow_business_router_packages(self) -> None:
+        package_by_resource = {
+            "auth": "auth",
+            "files": "file",
+            "plugins": "plugin",
+            "system": "system",
+            "users": "user",
+        }
+        violations = {}
+        for route in app.routes:
+            path = getattr(route, "path", "")
+            if not path.startswith("/api/v1/"):
+                continue
+            resource = path.split("/", 4)[3]
+            expected = f"gateway.routers.{package_by_resource[resource]}"
+            module = route.endpoint.__module__
+            if not module.startswith(f"{expected}."):
+                violations[path] = module
+        self.assertEqual(violations, {})
+
     def test_openapi_uses_the_dsm_product_name(self) -> None:
         schema = create_app().openapi()
         self.assertEqual(schema["info"]["title"], "DSM · DSH Server Manager")
@@ -177,7 +197,7 @@ class OpenApiContractTests(unittest.TestCase):
                     "flows": {
                         "password": {
                             "scopes": {},
-                            "tokenUrl": "/api/gateway/v1/auth/token",
+                            "tokenUrl": "/api/v1/auth/token",
                         }
                     },
                 },

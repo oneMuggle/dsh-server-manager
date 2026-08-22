@@ -4,7 +4,7 @@ document.getElementById('auth-form').addEventListener('submit', async (event) =>
   error.textContent = '';
   const data = Object.fromEntries(new FormData(event.currentTarget));
   try {
-    const response = await fetch('/api/gateway/v1/auth/login', {
+    const response = await fetch('/api/v1/auth/sessions', {
       method: 'POST',
       headers: {'content-type': 'application/json'},
       body: JSON.stringify(data),

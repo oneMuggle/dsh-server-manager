@@ -3,7 +3,7 @@
   button.addEventListener('click', async () => {
     button.disabled = true;
     try {
-      const response = await fetch('/api/gateway/v1/auth/logout', { method: 'POST' });
+      const response = await fetch('/api/v1/auth/sessions/current', { method: 'DELETE' });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       location.replace('/login');
     } catch (error) {

@@ -7,23 +7,19 @@ from fastapi import APIRouter, HTTPException, Request
 from common.security import hash_password
 from common.storage.users import RegistryError, get_user, list_users
 
-from ..dependencies import ApiToken
-from ..runtime import config
-from ..schemas.users import (
+from ...dependencies import ApiToken
+from ...runtime import config
+from ...schemas.users import (
     CreateManagedUser,
     RegisteredUser,
     RegisteredUsers,
     UpdateManagedUser,
 )
-from ..services.auth import require_admin, user_role
-from ..services.supervisor import (
-    SupervisorError,
-    create_user,
-    update_user,
-)
+from ...services.auth import require_admin, user_role
+from ...services.supervisor import SupervisorError, create_user, update_user
 
 
-router = APIRouter()
+router = APIRouter(prefix="/users")
 
 
 def _public_user(user: dict) -> RegisteredUser:
@@ -45,9 +41,8 @@ def _raise_supervisor_error(error: SupervisorError) -> None:
 
 
 @router.get(
-    "/api/gateway/v1/admin/users",
+    "",
     response_model=RegisteredUsers,
-    tags=["管理"],
     summary="列出注册用户",
 )
 async def registered_users(request: Request, token: ApiToken) -> RegisteredUsers:
@@ -56,18 +51,14 @@ async def registered_users(request: Request, token: ApiToken) -> RegisteredUsers
         stored_users = list_users(config.user_database_path)
     except RegistryError as error:
         raise HTTPException(status_code=503, detail="用户服务不可用") from error
-    users = [
-        _public_user(user)
-        for user in stored_users
-    ]
+    users = [_public_user(user) for user in stored_users]
     users.sort(key=lambda user: (user.created_at, user.username))
     return RegisteredUsers(users=users)
 
 
 @router.get(
-    "/api/gateway/v1/admin/users/{username}",
+    "/{username}",
     response_model=RegisteredUser,
-    tags=["管理"],
     summary="查询用户",
 )
 async def managed_user(
@@ -86,10 +77,9 @@ async def managed_user(
 
 
 @router.post(
-    "/api/gateway/v1/admin/users",
+    "",
     response_model=RegisteredUser,
     status_code=201,
-    tags=["管理"],
     summary="创建用户",
 )
 async def create_managed_user(
@@ -111,9 +101,8 @@ async def create_managed_user(
 
 
 @router.patch(
-    "/api/gateway/v1/admin/users/{username}",
+    "/{username}",
     response_model=RegisteredUser,
-    tags=["管理"],
     summary="重置密码或切换用户状态",
 )
 async def update_managed_user(
@@ -141,9 +130,8 @@ async def update_managed_user(
 
 
 @router.delete(
-    "/api/gateway/v1/admin/users/{username}",
+    "/{username}",
     status_code=501,
-    tags=["管理"],
     summary="删除用户（暂未实现）",
 )
 async def delete_managed_user(

@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 import common.security
-import gateway.routers.auth
+import gateway.routers.auth.registrations
 import gateway.services.auth
 import supervisor.application
 import supervisor.main
@@ -43,6 +43,29 @@ def _runtime_imports(path: Path) -> set[str]:
 
 
 class DependencyDirectionTests(unittest.TestCase):
+    def test_versioned_api_uses_domain_router_packages(self) -> None:
+        router_root = PROJECT_ROOT / "gateway" / "routers"
+        for domain in ("auth", "user", "plugin", "file", "system"):
+            with self.subTest(domain=domain):
+                self.assertTrue((router_root / domain / "__init__.py").is_file())
+                self.assertTrue((router_root / domain / "router.py").is_file())
+        for obsolete in ("auth.py", "users.py", "providers.py", "plugins.py", "uploads.py"):
+            with self.subTest(obsolete=obsolete):
+                self.assertFalse((router_root / obsolete).exists())
+
+    def test_obsolete_api_prefix_is_removed_from_active_sources(self) -> None:
+        active_files = [
+            *(PROJECT_ROOT / "gateway").rglob("*.py"),
+            *(PROJECT_ROOT / "gateway" / "web").rglob("*.js"),
+            PROJECT_ROOT / "README.md",
+        ]
+        violations = [
+            path.relative_to(PROJECT_ROOT).as_posix()
+            for path in active_files
+            if "/api/gateway/v1" in path.read_text(encoding="utf-8")
+        ]
+        self.assertEqual(violations, [])
+
     def test_active_configuration_uses_dsm_environment_names(self) -> None:
         active_files = [
             *(PROJECT_ROOT / "gateway").rglob("*.py"),
@@ -100,7 +123,10 @@ class DependencyDirectionTests(unittest.TestCase):
         self.assertNotIn("gateway.providers", imports)
 
     def test_gateway_auth_reuses_common_password_primitives(self) -> None:
-        self.assertIs(gateway.routers.auth.hash_password, common.security.hash_password)
+        self.assertIs(
+            gateway.routers.auth.registrations.hash_password,
+            common.security.hash_password,
+        )
         self.assertIs(
             gateway.services.auth.verify_password,
             common.security.verify_password,

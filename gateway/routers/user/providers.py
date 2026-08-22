@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Request
 
-from ..dependencies import ApiToken
-from ..runtime import config
-from ..schemas.providers import CreateCustomProvider, CustomProviderCreated
-from ..services.auth import require_admin
-from ..services.providers import ProviderOperationError, create_provider
+from ...dependencies import ApiToken
+from ...runtime import config
+from ...schemas.providers import CreateCustomProvider, CustomProviderCreated
+from ...services.auth import require_admin
+from ...services.providers import ProviderOperationError, create_provider
 
 
-router = APIRouter()
+router = APIRouter(prefix="/users")
 
 STATUS_BY_CODE = {
     "unavailable": 503,
@@ -46,11 +46,10 @@ def _http_error(error: ProviderOperationError) -> HTTPException:
 
 
 @router.post(
-    "/api/gateway/v1/admin/users/{username}/providers",
+    "/{username}/providers",
     status_code=201,
     response_model=CustomProviderCreated,
     response_model_by_alias=True,
-    tags=["管理"],
     summary="为指定用户添加自定义模型提供方",
     description=(
         "字段与 DSH 的“设置 → 模型 → 自定义提供方”一致。提供方配置通过目标用户 "

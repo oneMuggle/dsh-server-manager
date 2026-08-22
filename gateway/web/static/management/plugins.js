@@ -20,7 +20,7 @@ function scope() { return target.value === 'all' ? {type:'all', usernames:[], in
 async function action(pluginId, versionId, name) {
   if (!confirm(`确认${{install:'安装',uninstall:'卸载',enable:'启用',disable:'停用'}[name]}这个插件？`)) return;
   try {
-    const result = await api('/api/gateway/v1/admin/plugin-jobs', {method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({action:name, pluginId, versionId, scope:scope(), enabledAfterInstall:true, applyToFutureUsers:document.getElementById('future').checked})});
+    const result = await api('/api/v1/plugins/jobs', {method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({action:name, pluginId, versionId, scope:scope(), enabledAfterInstall:true, applyToFutureUsers:document.getElementById('future').checked})});
     message.textContent = `任务 ${result.job_id} 已进入队列，目标用户 ${result.target_count} 个`;
     setTimeout(load, 900);
   } catch (error) { message.textContent = `操作失败：${error.message}`; }
@@ -49,7 +49,7 @@ function renderJobs(jobs) {
 }
 async function load() {
   try {
-    const [pluginData,userData,jobData]=await Promise.all([api('/api/gateway/v1/admin/plugins'),api('/api/gateway/v1/admin/users'),api('/api/gateway/v1/admin/plugin-jobs')]);
+    const [pluginData,userData,jobData]=await Promise.all([api('/api/v1/plugins'),api('/api/v1/users'),api('/api/v1/plugins/jobs')]);
     users=userData.users; const current=target.value; target.replaceChildren(new Option('所有启用用户','all')); for(const user of users) target.append(new Option(`${user.username}${user.disabled?'（已停用）':''}`,user.username)); if([...target.options].some(x=>x.value===current)) target.value=current;
     renderPlugins(pluginData.plugins); renderJobs(jobData.jobs); message.textContent=`${pluginData.plugins.length} 个共享插件，${users.length} 个用户`;
   } catch(error) { message.textContent=`加载失败：${error.message}`; }
@@ -63,7 +63,7 @@ onlineForm.onsubmit=async event=>{
   onlinePackage.disabled=true; discoverVersions.disabled=true; onlineVersion.disabled=true; importOnline.disabled=true; message.textContent=`正在查询 ${packageName} 的版本…`;
   try {
     const params=new URLSearchParams({packageName});
-    const result=await api(`/api/gateway/v1/admin/plugins/registry-versions?${params}`);
+    const result=await api(`/api/v1/plugins/registry/versions?${params}`);
     if(!Array.isArray(result.versions)||!result.versions.length)throw new Error('Registry 未返回可用版本');
     discoveredPackage=result.packageName; onlinePackage.value=result.packageName; onlineVersion.replaceChildren();
     for(const version of [...result.versions].reverse()){ const label=version===result.latest?`${version}（latest）`:version; onlineVersion.append(new Option(label,version,false,version===result.latest)); }
@@ -75,11 +75,11 @@ importOnline.onclick=async()=>{
   const version=onlineVersion.value; if(!discoveredPackage||!version)return;
   onlinePackage.disabled=true; discoverVersions.disabled=true; onlineVersion.disabled=true; importOnline.disabled=true;
   try {
-    const result=await api('/api/gateway/v1/admin/plugins/online',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({packageName:discoveredPackage,version})});
+    const result=await api('/api/v1/plugins/imports/registry',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({packageName:discoveredPackage,version})});
     message.textContent=`${discoveredPackage}@${version} 导入任务 ${result.job_id} 已创建`; setTimeout(load,900);
   } catch(error){ message.textContent=`导入失败：${error.message}`; }
   finally { onlinePackage.disabled=false; discoverVersions.disabled=false; onlineVersion.disabled=false; importOnline.disabled=false; }
 };
-document.getElementById('offline').onsubmit=async event=>{ event.preventDefault(); const file=new FormData(event.currentTarget).get('file'); if(!(file instanceof File)||!file.size)return; try { const result=await api('/api/gateway/v1/admin/plugins/offline',{method:'POST',headers:{'content-type':'application/octet-stream'},body:file}); message.textContent=`离线导入任务 ${result.job_id} 已创建`; setTimeout(load,900); } catch(error){ message.textContent=`导入失败：${error.message}`; } };
+document.getElementById('offline').onsubmit=async event=>{ event.preventDefault(); const file=new FormData(event.currentTarget).get('file'); if(!(file instanceof File)||!file.size)return; try { const result=await api('/api/v1/plugins/imports/archive',{method:'POST',headers:{'content-type':'application/octet-stream'},body:file}); message.textContent=`离线导入任务 ${result.job_id} 已创建`; setTimeout(load,900); } catch(error){ message.textContent=`导入失败：${error.message}`; } };
 document.getElementById('refresh').onclick=load; load(); setInterval(load,10000);
-document.getElementById('logout').onclick=async event=>{ event.currentTarget.disabled=true; try { const response=await fetch('/api/gateway/v1/auth/logout',{method:'POST'}); if(!response.ok)throw new Error(`HTTP ${response.status}`); location.replace('/login'); } catch(error) { event.currentTarget.disabled=false; message.textContent=`退出失败：${error.message||error}`; } };
+document.getElementById('logout').onclick=async event=>{ event.currentTarget.disabled=true; try { const response=await fetch('/api/v1/auth/sessions/current',{method:'DELETE'}); if(!response.ok)throw new Error(`HTTP ${response.status}`); location.replace('/login'); } catch(error) { event.currentTarget.disabled=false; message.textContent=`退出失败：${error.message||error}`; } };

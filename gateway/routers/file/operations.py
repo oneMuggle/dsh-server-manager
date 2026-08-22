@@ -3,25 +3,24 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 
-from ..dependencies import ApiToken
-from ..runtime import config
-from ..schemas.uploads import DirectoryListing
-from ..services.auth import require_session
-from ..services.spool import SpoolError, receive_spool
-from ..services.supervisor import (
+from ...dependencies import ApiToken
+from ...runtime import config
+from ...schemas.uploads import DirectoryListing
+from ...services.auth import require_session
+from ...services.spool import SpoolError, receive_spool
+from ...services.supervisor import (
     SupervisorError,
     install_upload,
     list_upload_directories,
 )
 
 
-router = APIRouter()
+router = APIRouter(prefix="/files")
 
 
 @router.get(
-    "/api/gateway/v1/files/directories",
+    "/directories",
     response_model=DirectoryListing,
-    tags=["文件"],
     summary="列出当前用户工作区目录",
 )
 async def upload_directories(
@@ -45,13 +44,16 @@ async def upload_directories(
 
 
 @router.post(
-    "/api/gateway/v1/files/upload",
-    tags=["文件"],
+    "",
     summary="上传文件到当前用户工作区",
     openapi_extra={
         "requestBody": {
             "required": True,
-            "content": {"application/octet-stream": {"schema": {"type": "string", "format": "binary"}}},
+            "content": {
+                "application/octet-stream": {
+                    "schema": {"type": "string", "format": "binary"}
+                }
+            },
         }
     },
 )

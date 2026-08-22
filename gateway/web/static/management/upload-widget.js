@@ -33,7 +33,7 @@
     status.textContent = '';
     try {
       const query = new URLSearchParams({ directory: path });
-      const response = await fetch(`/api/gateway/v1/files/directories?${query}`);
+      const response = await fetch(`/api/v1/files/directories?${query}`);
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.detail || `HTTP ${response.status}`);
       currentDirectory = result.directory || '.';
@@ -73,7 +73,7 @@
       for (const file of selected) {
         status.textContent = `正在上传 ${completed + 1}/${selected.length}：${file.name}`;
         const query = new URLSearchParams({ directory: currentDirectory, name: file.name });
-        const response = await fetch(`/api/gateway/v1/files/upload?${query}`, {
+        const response = await fetch(`/api/v1/files?${query}`, {
           method: 'POST',
           headers: { 'content-type': 'application/octet-stream' },
           body: file,

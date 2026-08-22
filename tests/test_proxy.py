@@ -20,7 +20,9 @@ from gateway.proxy.transforms import (
     patch_connection_module,
     patch_html,
 )
-from gateway.routers.auth import login, oauth_token, register, register_page
+from gateway.routers.auth.registrations import register
+from gateway.routers.auth.sessions import login, oauth_token
+from gateway.routers.management import register_page
 from gateway.runtime import SWAGGER_UI_STATIC_DIR, config
 from gateway.schemas.auth import Credentials
 from gateway.services.auth import parse_session, verify_credentials
@@ -134,7 +136,7 @@ class AuthenticationPageTests(unittest.TestCase):
         request = Request({"type": "http", "headers": [], "app": app})
         with (
             patch(
-                "gateway.routers.auth.config",
+                "gateway.routers.management.config",
                 replace(config, registration_enabled=False),
             ),
             self.assertRaises(HTTPException) as caught,
@@ -147,7 +149,7 @@ class AuthenticationPageTests(unittest.TestCase):
             {
                 "type": "http",
                 "method": "POST",
-                "path": "/api/gateway/v1/auth/register",
+                "path": "/api/v1/auth/registrations",
                 "headers": [],
                 "client": ("192.0.2.10", 12345),
                 "app": app,
@@ -156,10 +158,10 @@ class AuthenticationPageTests(unittest.TestCase):
         credentials = Credentials(username="alice", password="change-me-123")
         with (
             patch(
-                "gateway.routers.auth.config",
+                "gateway.routers.auth.registrations.config",
                 replace(config, registration_enabled=False),
             ),
-            patch("gateway.routers.auth.create_user") as create,
+            patch("gateway.routers.auth.registrations.create_user") as create,
             self.assertRaises(HTTPException) as caught,
         ):
             asyncio.run(register(request, credentials))
@@ -172,11 +174,11 @@ class ManagementPageTests(unittest.TestCase):
     def test_management_page_loads_users_and_links_swagger(self) -> None:
         page = admin_page()
         script = (MANAGEMENT_STATIC_ROOT / "admin.js").read_text()
-        self.assertIn("/api/gateway/v1/admin/users", script)
+        self.assertIn("/api/v1/users", script)
         self.assertIn('href="/docs"', page)
         self.assertIn("用户管理", page)
         self.assertIn("退出登录", page)
-        self.assertIn("/api/gateway/v1/auth/logout", script)
+        self.assertIn("/api/v1/auth/sessions/current", script)
 
     def test_management_page_exposes_create_reset_and_status_controls(self) -> None:
         page = admin_page()
@@ -187,7 +189,7 @@ class ManagementPageTests(unittest.TestCase):
         self.assertIn("重置密码", page)
         self.assertIn("method: 'PATCH'", script)
         self.assertIn("disabled: nextDisabled", script)
-        self.assertNotIn("method: 'DELETE'", script)
+        self.assertNotIn("删除用户", page)
         self.assertNotIn("innerHTML", script)
 
     def test_swagger_and_openapi_are_enabled(self) -> None:
@@ -227,13 +229,13 @@ class ManagementPageTests(unittest.TestCase):
         password_flow = security_schemes["OAuth2PasswordBearer"]["flows"]["password"]
         self.assertEqual(
             password_flow["tokenUrl"],
-            "/api/gateway/v1/auth/token",
+            "/api/v1/auth/token",
         )
         self.assertEqual(security_schemes["APIKeyCookie"]["in"], "cookie")
 
     def test_custom_provider_api_is_described_with_ui_field_names(self) -> None:
         schema = app.openapi()
-        path = "/api/gateway/v1/admin/users/{username}/providers"
+        path = "/api/v1/users/{username}/providers"
         operation = schema["paths"][path]["post"]
         request_schema = operation["requestBody"]["content"]["application/json"]["schema"]
         component_name = request_schema["$ref"].rsplit("/", 1)[-1]
@@ -249,7 +251,7 @@ class ManagementPageTests(unittest.TestCase):
 
     def test_plugin_management_api_uses_public_field_names(self) -> None:
         schema = app.openapi()
-        operation = schema["paths"]["/api/gateway/v1/admin/plugin-jobs"]["post"]
+        operation = schema["paths"]["/api/v1/plugins/jobs"]["post"]
         request_schema = operation["requestBody"]["content"]["application/json"]["schema"]
         component_name = request_schema["$ref"].rsplit("/", 1)[-1]
         properties = schema["components"]["schemas"][component_name]["properties"]
@@ -265,10 +267,10 @@ class ManagementPageTests(unittest.TestCase):
             },
         )
         self.assertIn(
-            "/api/gateway/v1/admin/plugins/registry-versions", schema["paths"]
+            "/api/v1/plugins/registry/versions", schema["paths"]
         )
-        self.assertIn("/api/gateway/v1/admin/plugins/online", schema["paths"])
-        self.assertIn("/api/gateway/v1/admin/plugins/offline", schema["paths"])
+        self.assertIn("/api/v1/plugins/imports/registry", schema["paths"])
+        self.assertIn("/api/v1/plugins/imports/archive", schema["paths"])
 
 
 class TokenAuthenticationTests(unittest.TestCase):
@@ -283,7 +285,7 @@ class TokenAuthenticationTests(unittest.TestCase):
             {
                 "type": "http",
                 "method": "POST",
-                "path": "/api/gateway/v1/auth/token",
+                "path": "/api/v1/auth/token",
                 "headers": [],
                 "client": ("192.0.2.11", 12345),
                 "app": app,
@@ -300,7 +302,7 @@ class TokenAuthenticationTests(unittest.TestCase):
         )
 
         with patch(
-            "gateway.routers.auth.verify_credentials",
+            "gateway.routers.auth.sessions.verify_credentials",
             return_value=user,
         ):
             response = asyncio.run(oauth_token(request, form))
@@ -351,7 +353,7 @@ class TokenAuthenticationTests(unittest.TestCase):
             {
                 "type": "http",
                 "method": "POST",
-                "path": "/api/gateway/v1/auth/login",
+                "path": "/api/v1/auth/sessions",
                 "headers": [],
                 "client": ("192.0.2.10", 12345),
                 "app": app,

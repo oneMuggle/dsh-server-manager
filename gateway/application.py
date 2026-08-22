@@ -8,7 +8,7 @@ from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
-from .routers import auth, management, plugins, providers, proxy, uploads, users
+from .routers import auth, file, management, plugin, proxy, system, user
 from .runtime import SWAGGER_UI_STATIC_DIR, config
 from .web import MANAGEMENT_STATIC_ROOT as MANAGEMENT_STATIC_DIR
 
@@ -36,10 +36,6 @@ async def swagger_ui(request: Request) -> HTMLResponse:
     )
 
 
-async def health() -> dict[str, bool]:
-    return {"ok": True}
-
-
 def create_app() -> FastAPI:
     application = FastAPI(
         title="DSM · DSH Server Manager",
@@ -64,19 +60,12 @@ def create_app() -> FastAPI:
         name="management-static",
     )
     application.add_api_route("/docs", swagger_ui, include_in_schema=False)
-    application.add_api_route(
-        "/api/gateway/v1/health",
-        health,
-        methods=["GET"],
-        tags=["系统"],
-        summary="健康检查",
-    )
     application.include_router(auth.router)
+    application.include_router(system.router)
+    application.include_router(user.router)
+    application.include_router(file.router)
+    application.include_router(plugin.router)
     application.include_router(management.router)
-    application.include_router(users.router)
-    application.include_router(plugins.router)
-    application.include_router(providers.router)
-    application.include_router(uploads.router)
     application.include_router(proxy.router)
     return application
 

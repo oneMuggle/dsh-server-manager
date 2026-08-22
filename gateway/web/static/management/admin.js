@@ -31,7 +31,7 @@ async function changeUserState(user) {
   if (!confirm(`确认${verb}用户 ${user.username}？`)) return;
   message.textContent = `正在${verb} ${user.username}…`;
   try {
-    await requestJSON(`/api/gateway/v1/admin/users/${encodeURIComponent(user.username)}`, {
+    await requestJSON(`/api/v1/users/${encodeURIComponent(user.username)}`, {
       method: 'PATCH',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({disabled: nextDisabled}),
@@ -42,7 +42,7 @@ async function changeUserState(user) {
 async function loadUsers(successMessage = '') {
   message.textContent = '正在加载用户列表…';
   try {
-    const result = await requestJSON('/api/gateway/v1/admin/users');
+    const result = await requestJSON('/api/v1/users');
     rows.replaceChildren();
     for (const user of result.users) {
       const row = document.createElement('tr');
@@ -68,7 +68,7 @@ createForm.addEventListener('submit', async event => {
   button.disabled = true;
   message.textContent = '正在创建用户…';
   try {
-    const user = await requestJSON('/api/gateway/v1/admin/users', {
+    const user = await requestJSON('/api/v1/users', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({username: data.get('username'), password: data.get('password')}),
@@ -86,7 +86,7 @@ resetForm.addEventListener('submit', async event => {
   button.disabled = true;
   message.textContent = `正在重置 ${username} 的密码…`;
   try {
-    await requestJSON(`/api/gateway/v1/admin/users/${encodeURIComponent(username)}`, {
+    await requestJSON(`/api/v1/users/${encodeURIComponent(username)}`, {
       method: 'PATCH',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({password}),
@@ -101,7 +101,7 @@ document.getElementById('refresh').addEventListener('click', () => loadUsers());
 document.getElementById('logout').addEventListener('click', async event => {
   event.currentTarget.disabled = true;
   try {
-    const response = await fetch('/api/gateway/v1/auth/logout', {method: 'POST'});
+    const response = await fetch('/api/v1/auth/sessions/current', {method: 'DELETE'});
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     location.replace('/login');
   } catch (error) {

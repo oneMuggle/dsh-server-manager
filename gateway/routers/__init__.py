@@ -1,6 +1,13 @@
-"""Domain route exports used by the Gateway application."""
-"""Gateway API route packages."""
+"""Gateway route packages."""
 
-from . import auth, management, plugins, providers, proxy, uploads, users
+from . import auth, file, management, plugin, proxy, system, user
 
-__all__ = ["auth", "management", "plugins", "providers", "proxy", "uploads", "users"]
+__all__ = [
+    "auth",
+    "file",
+    "management",
+    "plugin",
+    "proxy",
+    "system",
+    "user",
+]
