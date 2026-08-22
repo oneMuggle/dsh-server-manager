@@ -127,7 +127,7 @@ class PluginCommandRunner:
             str(self.store),
             "add",
             "--save-exact",
-            "--ignore-scripts",
+            "--allow-build=node-pty",
             "--package-import-method=copy",
             "--reporter=append-only",
         ]

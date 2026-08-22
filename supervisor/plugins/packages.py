@@ -29,6 +29,23 @@ MANAGED_SCOPE = "@dsh-managed"
 MAX_REGISTRY_METADATA_OUTPUT = 1024 * 1024
 
 
+def freeze_release(release: Path) -> None:
+    for root, directories, files in os.walk(release):
+        for name in directories:
+            path = Path(root) / name
+            if not path.is_symlink():
+                os.chown(path, 0, 0)
+                os.chmod(path, 0o555)
+        for name in files:
+            path = Path(root) / name
+            if not path.is_symlink():
+                executable = bool(path.stat().st_mode & 0o111)
+                os.chown(path, 0, 0)
+                os.chmod(path, 0o555 if executable else 0o444)
+    os.chown(release, 0, 0)
+    os.chmod(release, 0o555)
+
+
 class SharedPackageRepository:
     def __init__(
         self,
@@ -110,19 +127,7 @@ class SharedPackageRepository:
             shutil.rmtree(staging)
         else:
             os.replace(staging, release)
-        for root, directories, files in os.walk(release):
-            for name in directories:
-                path = Path(root) / name
-                if not path.is_symlink():
-                    os.chown(path, 0, 0)
-                    os.chmod(path, 0o555)
-            for name in files:
-                path = Path(root) / name
-                if not path.is_symlink():
-                    os.chown(path, 0, 0)
-                    os.chmod(path, 0o444)
-        os.chown(release, 0, 0)
-        os.chmod(release, 0o555)
+        freeze_release(release)
         alias = f"{MANAGED_SCOPE}/p-{name_key}-{version_key.lower()}-{digest[:8]}"
         plugin_id, version_id = register_plugin_version(
             self.database_path,

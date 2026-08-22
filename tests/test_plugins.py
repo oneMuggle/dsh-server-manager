@@ -31,7 +31,7 @@ from supervisor.plugins import PluginOperationError, SharedPluginManager
 from supervisor.plugins.assignments import restore_user_assignment
 from supervisor.plugins.commands import PluginCommandRunner
 from supervisor.plugins.installer import installed_package
-from supervisor.plugins.packages import SharedPackageRepository
+from supervisor.plugins.packages import SharedPackageRepository, freeze_release
 from supervisor.plugins.profile import apply_profile
 from supervisor.plugins.builtins import parse_builtin_catalog, write_builtin_overlay
 from supervisor.plugins.registry import (
@@ -154,6 +154,22 @@ class PluginStoreTests(unittest.TestCase):
 
 
 class PluginInputTests(unittest.TestCase):
+    def test_release_freeze_preserves_executable_files(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            release = Path(temporary) / "release"
+            release.mkdir()
+            helper = release / "spawn-helper"
+            helper.write_bytes(b"native helper")
+            helper.chmod(0o755)
+            manifest = release / "package.json"
+            manifest.write_text("{}\n", encoding="utf-8")
+
+            with patch("supervisor.plugins.packages.os.chown"):
+                freeze_release(release)
+
+            self.assertEqual(helper.stat().st_mode & 0o777, 0o555)
+            self.assertEqual(manifest.stat().st_mode & 0o777, 0o444)
+
     def test_scoped_and_unscoped_npm_names_are_accepted(self) -> None:
         self.assertEqual(validate_package_name("@scope/my-plugin"), "@scope/my-plugin")
         self.assertEqual(validate_package_name("my-plugin"), "my-plugin")
@@ -238,6 +254,29 @@ class PluginInputTests(unittest.TestCase):
 
 
 class PluginVersionDiscoveryTests(unittest.IsolatedAsyncioTestCase):
+    async def test_plugin_install_allows_only_node_pty_native_build(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            commands = PluginCommandRunner(root / "plugins")
+            staging = root / "staging"
+            staging.mkdir()
+            captured: list[list[str]] = []
+
+            async def run(argv: list[str], **kwargs: object) -> str:
+                captured.append(argv)
+                return ""
+
+            with patch.object(commands, "run", side_effect=run):
+                await commands.pnpm_add(
+                    staging,
+                    "dsh-better-sidebar@0.15.1",
+                    offline=False,
+                )
+
+            self.assertEqual(len(captured), 1)
+            self.assertIn("--allow-build=node-pty", captured[0])
+            self.assertNotIn("--ignore-scripts", captured[0])
+
     async def test_invalid_install_result_is_a_plugin_operation_error(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
