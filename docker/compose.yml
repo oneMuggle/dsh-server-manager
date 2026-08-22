@@ -1,8 +1,8 @@
-name: dsh-lan-deployment
+name: dsh-server-manager
 
 services:
-  dsh:
-    image: dsh-lan-deployment:local
+  dsm:
+    image: dsh-server-manager:local
     build:
       context: ..
       dockerfile: docker/Dockerfile

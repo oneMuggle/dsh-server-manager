@@ -40,7 +40,7 @@ class ControlServer:
         self.owner = owner
         self.gateway_user = gateway_user
         self.fatal = fatal
-        self.logger = logger or logging.getLogger("dsh.supervisor")
+        self.logger = logger or logging.getLogger("dsm.supervisor")
         self.server: asyncio.AbstractServer | None = None
 
     def _authorized_peer(self, writer: asyncio.StreamWriter) -> bool:

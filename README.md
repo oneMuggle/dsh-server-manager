@@ -1,6 +1,6 @@
-# DSH LAN Deployment
+# DSH Server Manager（DSM）
 
-使用一个 Docker 容器从官方 DeepSeek Harness 源码构建多用户 Web 服务。Python 网关提供注册和登录，并把每个已认证用户转发到独立的 DSH 进程。
+DSH Server Manager（DSM）使用一个 Docker 容器从官方 DeepSeek Harness 源码构建多用户服务器管理平台。Python 网关提供注册、登录和集中管理，并把每个已认证用户转发到独立的 DSH 进程。
 
 ## 架构
 
@@ -25,7 +25,7 @@ DSH 保持官方默认回环监听。FastAPI 接收请求，aiohttp 负责 HTTP/
 
 ```sh
 git clone --recurse-submodules <本仓库地址>
-cd dsh-lan-deployment
+cd dsh-server-manager
 ```
 
 已有 checkout 若缺少 submodule：

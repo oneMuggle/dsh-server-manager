@@ -30,10 +30,10 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /opt/deepseek-harness /opt/deepseek-harness
-COPY requirements.txt /opt/dsh-lan-deployment/requirements.txt
+COPY requirements.txt /opt/dsh-server-manager/requirements.txt
 
 RUN python3 -m venv /opt/venv \
-    && /opt/venv/bin/pip install --no-cache-dir -r /opt/dsh-lan-deployment/requirements.txt \
+    && /opt/venv/bin/pip install --no-cache-dir -r /opt/dsh-server-manager/requirements.txt \
     && npm install --global pnpm@11.7.0 \
     && groupadd --gid 19998 dsh-plugin-installer \
     && useradd \
@@ -52,19 +52,19 @@ RUN python3 -m venv /opt/venv \
       --shell /usr/sbin/nologin \
       dsh-gateway
 
-COPY gateway /opt/dsh-lan-deployment/gateway
-COPY supervisor /opt/dsh-lan-deployment/supervisor
-COPY common /opt/dsh-lan-deployment/common
+COPY gateway /opt/dsh-server-manager/gateway
+COPY supervisor /opt/dsh-server-manager/supervisor
+COPY common /opt/dsh-server-manager/common
 
 RUN mkdir -p \
       /var/lib/dsh \
       /run/dsh \
-    && chmod 755 /opt/dsh-lan-deployment \
-    && find /opt/dsh-lan-deployment -type d -exec chmod 755 {} + \
-    && find /opt/dsh-lan-deployment -type f -exec chmod 644 {} +
+    && chmod 755 /opt/dsh-server-manager \
+    && find /opt/dsh-server-manager -type d -exec chmod 755 {} + \
+    && find /opt/dsh-server-manager -type f -exec chmod 644 {} +
 
-ENV PYTHONPATH=/opt/dsh-lan-deployment
-WORKDIR /opt/dsh-lan-deployment
+ENV PYTHONPATH=/opt/dsh-server-manager
+WORKDIR /opt/dsh-server-manager
 
 EXPOSE 8080
 

@@ -38,7 +38,7 @@ from .tenants.uploads import (
     list_upload_directories as _list_upload_directories,
 )
 
-LOGGER = logging.getLogger("dsh.supervisor")
+LOGGER = logging.getLogger("dsm.supervisor")
 
 USERNAME_PATTERN = re.compile(r"^[a-z][a-z0-9_-]{2,23}$")
 

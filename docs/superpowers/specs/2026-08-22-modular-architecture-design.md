@@ -1,4 +1,4 @@
-# DSH LAN Deployment Modular Architecture Design
+# DSH Server Manager Modular Architecture Design
 
 ## Objective
 

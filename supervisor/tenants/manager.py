@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 
-LOGGER = logging.getLogger("dsh.supervisor")
+LOGGER = logging.getLogger("dsm.supervisor")
 async def http_ready(port: int) -> bool:
     try:
         reader, writer = await asyncio.wait_for(
