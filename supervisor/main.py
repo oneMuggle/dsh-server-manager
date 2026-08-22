@@ -17,6 +17,19 @@ from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+from common.contracts.control import (
+    AssignPluginRequest,
+    CreateUserRequest,
+    DiscoverPluginVersionsRequest,
+    ImportOfflinePluginRequest,
+    ImportOnlinePluginRequest,
+    InstallUploadRequest,
+    ListUploadDirectoriesRequest,
+    error_response,
+    parse_control_request,
+    success_response,
+)
+from common.errors import ControlRequestError
 from common.storage.assignments import apply_plugin_defaults
 from common.storage.plugin_catalog import get_plugin_version
 from common.storage.plugin_jobs import create_job, unfinished_job_ids
@@ -795,75 +808,55 @@ class Supervisor:
                 response = {"ok": False, "code": "forbidden", "message": "forbidden"}
             else:
                 line = await asyncio.wait_for(reader.readline(), timeout=10)
-                request = json.loads(line)
-                action = request.get("action")
+                request = parse_control_request(json.loads(line))
+                action = request.action
                 try:
-                    if action == "create_user":
-                        result = await self.create_user(
-                            str(request.get("username", "")), request.get("password")
-                        )
-                    elif action == "install_upload":
+                    if isinstance(request, CreateUserRequest):
+                        result = await self.create_user(request.username, request.password)
+                    elif isinstance(request, InstallUploadRequest):
                         result = await self.install_upload(
-                            str(request.get("username", "")),
-                            str(request.get("spool_name", "")),
-                            str(request.get("directory", "")),
-                            str(request.get("filename", "")),
-                            int(request.get("size", -1)),
+                            request.username,
+                            request.spool_name,
+                            request.directory,
+                            request.filename,
+                            request.size,
                         )
-                    elif action == "list_upload_directories":
+                    elif isinstance(request, ListUploadDirectoriesRequest):
                         result = await self.list_upload_directories(
-                            str(request.get("username", "")),
-                            str(request.get("directory", ".")),
+                            request.username,
+                            request.directory,
                         )
-                    elif action == "plugin_online_import":
+                    elif isinstance(request, ImportOnlinePluginRequest):
                         result = await self.import_online_plugin(
-                            str(request.get("package_name", "")),
-                            str(request.get("requested_version", "latest")),
-                            str(request.get("created_by", "admin")),
+                            request.package_name,
+                            request.requested_version,
+                            request.created_by,
                         )
-                    elif action == "plugin_discover_versions":
-                        result = await self.discover_plugin_versions(
-                            str(request.get("package_name", ""))
-                        )
-                    elif action == "plugin_offline_import":
+                    elif isinstance(request, DiscoverPluginVersionsRequest):
+                        result = await self.discover_plugin_versions(request.package_name)
+                    elif isinstance(request, ImportOfflinePluginRequest):
                         result = await self.import_offline_plugin(
-                            str(request.get("spool_name", "")),
-                            str(request.get("created_by", "admin")),
+                            request.spool_name,
+                            request.created_by,
                         )
-                    elif action == "plugin_assignment":
-                        result = await self.assign_plugin(request)
+                    elif isinstance(request, AssignPluginRequest):
+                        result = await self.assign_plugin(request.model_dump())
                     else:
                         raise ValueError("unknown action")
-                    response = {"ok": True, **result}
+                    response = success_response(**result)
                 except FileExistsError:
-                    response = {
-                        "ok": False,
-                        "code": "conflict",
-                        "message": "用户名已存在",
-                    }
+                    response = error_response("conflict", "用户名已存在")
                 except (TypeError, ValueError, PluginOperationError) as error:
-                    response = {
-                        "ok": False,
-                        "code": "bad_request",
-                        "message": str(error),
-                    }
+                    response = error_response("bad_request", str(error))
                 except FirewallError:
                     LOGGER.exception("firewall update failed; stopping container")
                     self.fatal.set()
-                    response = {
-                        "ok": False,
-                        "code": "supervisor_error",
-                        "message": "租户隔离更新失败",
-                    }
+                    response = error_response("supervisor_error", "租户隔离更新失败")
                 except Exception:
                     LOGGER.exception("control action %s failed", action)
-                    response = {
-                        "ok": False,
-                        "code": "supervisor_error",
-                        "message": "操作失败",
-                    }
-        except (asyncio.TimeoutError, json.JSONDecodeError):
-            response = {"ok": False, "code": "bad_request", "message": "invalid request"}
+                    response = error_response("supervisor_error", "操作失败")
+        except (asyncio.TimeoutError, json.JSONDecodeError, ControlRequestError):
+            response = error_response("bad_request", "invalid request")
         try:
             writer.write(json.dumps(response, ensure_ascii=False).encode("utf-8") + b"\n")
             await writer.drain()

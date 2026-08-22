@@ -8,6 +8,12 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from common.contracts.control import (
+    AssignPluginRequest,
+    ControlRequestError,
+    CreateUserRequest,
+    parse_control_request,
+)
 from gateway.main import app
 from common.storage.users import initialize_registry
 from gateway.supervisor_client import SupervisorError, _request
@@ -185,7 +191,7 @@ class SupervisorWireContractTests(unittest.IsolatedAsyncioTestCase):
         writer = _MemoryWriter()
 
         with patch(
-            "gateway.supervisor_client.asyncio.open_unix_connection",
+            "gateway.services.supervisor.asyncio.open_unix_connection",
             return_value=(reader, writer),
         ):
             response = await _request(
@@ -201,6 +207,44 @@ class SupervisorWireContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response, {"ok": True, "username": "alice"})
         self.assertTrue(writer.closed)
 
+
+class TypedControlContractTests(unittest.IsolatedAsyncioTestCase):
+    def test_each_wire_action_parses_to_a_typed_request(self) -> None:
+        fixtures = [
+            ({"action": "create_user", "username": "alice", "password": {}}, CreateUserRequest),
+            ({"action": "install_upload", "username": "alice", "spool_name": "a", "directory": ".", "filename": "a.txt", "size": 1}, "InstallUploadRequest"),
+            ({"action": "list_upload_directories", "username": "alice", "directory": "."}, "ListUploadDirectoriesRequest"),
+            ({"action": "plugin_online_import", "package_name": "pkg", "requested_version": "latest", "created_by": "admin"}, "ImportOnlinePluginRequest"),
+            ({"action": "plugin_discover_versions", "package_name": "pkg"}, "DiscoverPluginVersionsRequest"),
+            ({"action": "plugin_offline_import", "spool_name": "a.plugin.tgz", "created_by": "admin"}, "ImportOfflinePluginRequest"),
+            ({"action": "plugin_assignment", "plugin_action": "install", "plugin_id": 1, "plugin_version_id": 2, "scope": {"type": "all"}, "enabled_after_install": True, "apply_to_future_users": False, "created_by": "admin"}, AssignPluginRequest),
+        ]
+        for payload, expected in fixtures:
+            with self.subTest(action=payload["action"]):
+                request = parse_control_request(payload)
+                expected_name = expected if isinstance(expected, str) else expected.__name__
+                self.assertEqual(type(request).__name__, expected_name)
+
+    def test_assignment_round_trips_without_wire_field_changes(self) -> None:
+        payload = {
+            "action": "plugin_assignment",
+            "plugin_action": "enable",
+            "plugin_id": 7,
+            "plugin_version_id": 11,
+            "scope": {"type": "users", "usernames": ["alice"]},
+            "enabled_after_install": True,
+            "apply_to_future_users": False,
+            "created_by": "admin",
+        }
+        request = parse_control_request(payload)
+        self.assertEqual(request.model_dump(exclude_none=True), payload)
+
+    def test_unknown_or_incomplete_actions_are_bad_requests(self) -> None:
+        for payload in ({"action": "missing"}, {"action": "create_user"}):
+            with self.subTest(payload=payload), self.assertRaises(ControlRequestError) as caught:
+                parse_control_request(payload)
+            self.assertEqual(caught.exception.code, "bad_request")
+
     async def test_error_code_and_message_survive_the_wire_boundary(self) -> None:
         reader = asyncio.StreamReader()
         reader.feed_data(
@@ -214,7 +258,7 @@ class SupervisorWireContractTests(unittest.IsolatedAsyncioTestCase):
         writer = _MemoryWriter()
 
         with patch(
-            "gateway.supervisor_client.asyncio.open_unix_connection",
+            "gateway.services.supervisor.asyncio.open_unix_connection",
             return_value=(reader, writer),
         ):
             with self.assertRaises(SupervisorError) as caught:
