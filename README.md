@@ -43,8 +43,8 @@ git submodule update --init --recursive
 ```sh
 cp .env.example .env
 # 编辑 .env，为 DSH_ADMIN_PASSWORD 设置至少 8 个字符的强密码
-docker compose -f compose.yml up -d --build
-docker compose -f compose.yml logs -f
+docker compose -f docker/compose.yml up -d --build
+docker compose -f docker/compose.yml logs -f
 ```
 
 容器启动时会检查固定管理员账号 `admin`。如果该账号不存在，容器使用 `DSH_ADMIN_PASSWORD` 自动创建；变量缺失或长度不在 8–256 个字符之间时，容器拒绝启动。账号创建后修改环境变量不会自动重置已有密码。
@@ -196,7 +196,7 @@ Swagger UI 位于 `/docs`，OpenAPI 文档位于 `/openapi.json`。Swagger UI �
 ## 停止
 
 ```sh
-docker compose -f compose.yml down
+docker compose -f docker/compose.yml down
 ```
 
 ## 安全限制

@@ -4,7 +4,7 @@ services:
   dsh:
     image: dsh-lan-deployment:local
     build:
-      context: .
+      context: ..
       dockerfile: docker/Dockerfile
     ports:
       - "3081:8080"
@@ -12,11 +12,9 @@ services:
       - NET_ADMIN
     security_opt:
       - seccomp=unconfined
-    environment:
-      DSH_ADMIN_PASSWORD: ${DSH_ADMIN_PASSWORD:?请在 .env 中设置 DSH_ADMIN_PASSWORD}
-      DSH_PLUGIN_NPM_REGISTRY: ${DSH_PLUGIN_NPM_REGISTRY:-}
-      DSH_PLUGIN_NPM_TOKEN: ${DSH_PLUGIN_NPM_TOKEN:-}
+    env_file:
+      - ../.env
     volumes:
-      - ./data:/var/lib/dsh
+      - ../data:/var/lib/dsh
     restart: unless-stopped
     stop_grace_period: 15s
