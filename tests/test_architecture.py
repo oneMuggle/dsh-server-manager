@@ -13,6 +13,14 @@ import supervisor.tenants.firewall
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 TEMPORARY_SUPERVISOR_GATEWAY_IMPORTS = {}
+OBSOLETE_ENVIRONMENT_NAMES = {
+    "DSH_ADMIN_PASSWORD",
+    "DSH_STATE_ROOT",
+    "DSH_CONTROL_SOCKET",
+    "DSH_COOKIE_SECURE",
+    "DSH_PLUGIN_NPM_REGISTRY",
+    "DSH_PLUGIN_NPM_TOKEN",
+}
 
 
 def _runtime_imports(path: Path) -> set[str]:
@@ -34,6 +42,23 @@ def _runtime_imports(path: Path) -> set[str]:
 
 
 class DependencyDirectionTests(unittest.TestCase):
+    def test_active_configuration_uses_dsm_environment_names(self) -> None:
+        active_files = [
+            *(PROJECT_ROOT / "gateway").rglob("*.py"),
+            *(PROJECT_ROOT / "supervisor").rglob("*.py"),
+            PROJECT_ROOT / ".env.example",
+            PROJECT_ROOT / "README.md",
+            PROJECT_ROOT / "docker" / "Dockerfile",
+            PROJECT_ROOT / "docker" / "compose.yml",
+        ]
+        violations: dict[str, list[str]] = {}
+        for path in active_files:
+            text = path.read_text(encoding="utf-8")
+            found = sorted(name for name in OBSOLETE_ENVIRONMENT_NAMES if name in text)
+            if found:
+                violations[path.relative_to(PROJECT_ROOT).as_posix()] = found
+        self.assertEqual(violations, {})
+
     def test_common_never_imports_runtime_packages(self) -> None:
         common_root = PROJECT_ROOT / "common"
         violations = {

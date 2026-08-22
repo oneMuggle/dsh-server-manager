@@ -42,12 +42,12 @@ git submodule update --init --recursive
 
 ```sh
 cp .env.example .env
-# 编辑 .env，为 DSH_ADMIN_PASSWORD 设置至少 8 个字符的强密码
+# 编辑 .env，为 DSM_ADMIN_PASSWORD 设置至少 8 个字符的强密码
 docker compose -f docker/compose.yml up -d --build
 docker compose -f docker/compose.yml logs -f
 ```
 
-容器启动时会检查固定管理员账号 `admin`。如果该账号不存在，容器使用 `DSH_ADMIN_PASSWORD` 自动创建；变量缺失或长度不在 8–256 个字符之间时，容器拒绝启动。账号创建后修改环境变量不会自动重置已有密码。
+容器启动时会检查固定管理员账号 `admin`。如果该账号不存在，容器使用 `DSM_ADMIN_PASSWORD` 自动创建；变量缺失或长度不在 8–256 个字符之间时，容器拒绝启动。账号创建后修改环境变量不会自动重置已有密码。`DSM_REGISTRATION_ENABLED` 默认为 `false`，设置为 `true` 才开放公开注册。
 
 查看服务器局域网地址：
 
@@ -185,7 +185,7 @@ Swagger UI 位于 `/docs`，OpenAPI 文档位于 `/openapi.json`。Swagger UI �
 
 离线导入接口为 `POST /api/gateway/v1/admin/plugins/offline`，请求体直接使用 `application/octet-stream` 传输 `.tgz`。批量策略接口为 `POST /api/gateway/v1/admin/plugin-jobs`，导入和策略操作均异步返回任务 ID，可通过 `GET /api/gateway/v1/admin/plugin-jobs/{job_id}` 查询结果。所有接口仅允许管理员 Cookie 或 Bearer Token 调用。
 
-默认使用 pnpm/npm 的公共 registry。私有源可以在 `.env` 中设置 `DSH_PLUGIN_NPM_REGISTRY` 和只读的 `DSH_PLUGIN_NPM_TOKEN`。安装过程使用独立低权限账号，禁用 npm lifecycle scripts，并将发布目录改为只读。插件自身仍会进入被分配用户的 DSH 进程执行，所以只能导入可信插件。
+默认使用 pnpm/npm 的公共 registry。私有源可以在 `.env` 中设置 `DSM_PLUGIN_NPM_REGISTRY` 和只读的 `DSM_PLUGIN_NPM_TOKEN`。安装过程使用独立低权限账号，禁用 npm lifecycle scripts，并将发布目录改为只读。插件自身仍会进入被分配用户的 DSH 进程执行，所以只能导入可信插件。
 
 ## 上传文件
 

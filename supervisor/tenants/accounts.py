@@ -13,7 +13,7 @@ from .firewall import TenantNetwork
 FIRST_UID = 20000
 FIRST_PORT = 3101
 ADMIN_USERNAME = "admin"
-ADMIN_PASSWORD_ENV = "DSH_ADMIN_PASSWORD"
+ADMIN_PASSWORD_ENV = "DSM_ADMIN_PASSWORD"
 
 
 def normalize_user_roles(registry: dict[str, Any]) -> bool:

@@ -62,12 +62,12 @@ class SupervisorRegressionTests(unittest.TestCase):
         with patch.dict(os.environ, {}, clear=True):
             with self.assertRaises(RuntimeError):
                 admin_password_from_environment()
-        with patch.dict(os.environ, {"DSH_ADMIN_PASSWORD": "short"}, clear=True):
+        with patch.dict(os.environ, {"DSM_ADMIN_PASSWORD": "short"}, clear=True):
             with self.assertRaises(RuntimeError):
                 admin_password_from_environment()
         with patch.dict(
             os.environ,
-            {"DSH_ADMIN_PASSWORD": "strong-test-password"},
+            {"DSM_ADMIN_PASSWORD": "strong-test-password"},
             clear=True,
         ):
             self.assertEqual(

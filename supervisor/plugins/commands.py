@@ -94,13 +94,13 @@ class PluginCommandRunner:
 
     def registry_arguments(self, staging: Path) -> list[str]:
         arguments: list[str] = []
-        registry = os.environ.get("DSH_PLUGIN_NPM_REGISTRY", "").strip()
-        token = os.environ.get("DSH_PLUGIN_NPM_TOKEN", "").strip()
+        registry = os.environ.get("DSM_PLUGIN_NPM_REGISTRY", "").strip()
+        token = os.environ.get("DSM_PLUGIN_NPM_TOKEN", "").strip()
         if registry:
             parsed = urlsplit(registry)
             if parsed.scheme not in {"http", "https"} or not parsed.netloc:
                 raise PluginOperationError(
-                    "DSH_PLUGIN_NPM_REGISTRY 必须是 HTTP(S) URL"
+                    "DSM_PLUGIN_NPM_REGISTRY 必须是 HTTP(S) URL"
                 )
             arguments.extend(["--registry", registry])
         npmrc = staging / ".npmrc"

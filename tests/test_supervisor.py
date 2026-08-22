@@ -4,15 +4,43 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from gateway.config import Config
 from supervisor.config import SupervisorConfig
-from supervisor.gateway_process import start_gateway
+from supervisor.gateway_process import gateway_command, start_gateway
+
+
+class GatewayConfigTests(unittest.TestCase):
+    def test_registration_and_cookie_flags_use_strict_booleans(self) -> None:
+        with patch.dict(
+            "os.environ",
+            {
+                "DSM_REGISTRATION_ENABLED": "TrUe",
+                "DSM_COOKIE_SECURE": "false",
+            },
+            clear=True,
+        ):
+            config = Config.from_environment()
+        self.assertTrue(config.registration_enabled)
+        self.assertFalse(config.cookie_secure)
+
+        with patch.dict(
+            "os.environ",
+            {"DSM_REGISTRATION_ENABLED": "yes"},
+            clear=True,
+        ):
+            with self.assertRaisesRegex(ValueError, "DSM_REGISTRATION_ENABLED"):
+                Config.from_environment()
+
+    def test_registration_defaults_to_disabled(self) -> None:
+        with patch.dict("os.environ", {}, clear=True):
+            self.assertFalse(Config.from_environment().registration_enabled)
 
 
 class SupervisorConfigTests(unittest.TestCase):
     def test_environment_derives_all_state_paths_from_one_root(self) -> None:
         with patch.dict(
             "os.environ",
-            {"DSH_STATE_ROOT": "/srv/dsh-state"},
+            {"DSM_STATE_ROOT": "/srv/dsh-state"},
             clear=True,
         ):
             config = SupervisorConfig.from_environment()
@@ -32,6 +60,12 @@ class SupervisorConfigTests(unittest.TestCase):
 
 
 class GatewayProcessTests(unittest.IsolatedAsyncioTestCase):
+    def test_gateway_receives_only_dsm_manager_environment(self) -> None:
+        arguments = gateway_command(SupervisorConfig.from_environment())
+        self.assertIn("DSM_STATE_ROOT=/var/lib/dsh", arguments)
+        self.assertIn("DSM_CONTROL_SOCKET=/run/dsh/control.sock", arguments)
+        self.assertFalse(any(value.startswith("DSH_STATE_ROOT=") for value in arguments))
+
     async def test_gateway_starts_from_the_dsm_installation_root(self) -> None:
         config = SupervisorConfig.from_environment()
         calls: list[tuple[tuple[object, ...], dict[str, object]]] = []

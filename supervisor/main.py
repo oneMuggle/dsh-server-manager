@@ -9,7 +9,7 @@ from .application import FirewallError, Supervisor
 
 
 logging.basicConfig(
-    level=os.environ.get("LOG_LEVEL", "INFO"),
+    level=os.environ.get("DSM_LOG_LEVEL", "INFO"),
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
 LOGGER = logging.getLogger("dsm.supervisor")
