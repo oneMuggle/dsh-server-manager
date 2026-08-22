@@ -260,3 +260,7 @@ docker compose -f docker/compose.yml down
 - [dsh-server-deployment](https://github.com/AnkoCD/dsh-server-deployment)：为多用户门户、基于 OS 账号的数据隔离、回环网关代理和文件访问边界提供了重要参考。
 
 DSM 是独立的社区部署与管理项目，不代表上述项目的官方生产部署方案。
+
+## 许可证
+
+本项目基于 [MIT License](LICENSE) 发布。
