@@ -73,6 +73,7 @@ class TenantManager:
                 "env", "-i",
                 f"HOME={home}",
                 f"DSH_HOME={state}",
+                "SHELL=/bin/bash",
                 "PATH=/usr/local/bin:/usr/bin:/bin",
                 "/usr/local/bin/node",
                 self.harness_cli,

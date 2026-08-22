@@ -11,6 +11,43 @@ from supervisor.tenants import TenantManager
 
 
 class TenantManagerTests(unittest.IsolatedAsyncioTestCase):
+    async def test_tenant_process_defaults_to_bash(self) -> None:
+        manager = TenantManager(
+            users_root=Path("/var/lib/dsh/users"),
+            harness_cli="/opt/dsh/index.js",
+        )
+        user = {"username": "alice", "os_user": "dsh-alice", "port": 3101}
+        commands: list[tuple[str, ...]] = []
+        manager.ready["alice"] = asyncio.Event()
+
+        class Process:
+            returncode = None
+            pid = 12345
+
+            async def wait(self) -> int:
+                manager.stopping = True
+                return 0
+
+        async def create_process(*command: str, **kwargs: object) -> Process:
+            commands.append(command)
+            return Process()
+
+        with (
+            patch(
+                "supervisor.tenants.manager.asyncio.create_subprocess_exec",
+                side_effect=create_process,
+            ),
+            patch("supervisor.tenants.manager.http_ready", return_value=True),
+        ):
+            await manager._run(user)
+
+        self.assertEqual(len(commands), 1)
+        self.assertIn("SHELL=/bin/bash", commands[0])
+        self.assertLess(
+            commands[0].index("SHELL=/bin/bash"),
+            commands[0].index("/usr/local/bin/node"),
+        )
+
     async def test_restart_signals_the_running_tenant_process_group(self) -> None:
         class ReadyTenantManager(TenantManager):
             async def wait_ready(self, username: str, timeout: float = 120) -> bool:
