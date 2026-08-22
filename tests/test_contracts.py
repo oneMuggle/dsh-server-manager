@@ -34,6 +34,10 @@ PUBLIC_RESPONSES = {
     ("post", "/api/gateway/v1/admin/plugins/online"): ["202", "422"],
     ("get", "/api/gateway/v1/admin/plugins/registry-versions"): ["200", "422"],
     ("get", "/api/gateway/v1/admin/users"): ["200"],
+    ("post", "/api/gateway/v1/admin/users"): ["201", "422"],
+    ("get", "/api/gateway/v1/admin/users/{username}"): ["200", "422"],
+    ("patch", "/api/gateway/v1/admin/users/{username}"): ["200", "422"],
+    ("delete", "/api/gateway/v1/admin/users/{username}"): ["422", "501"],
     ("post", "/api/gateway/v1/admin/users/{username}/providers"): ["201", "422"],
     ("post", "/api/gateway/v1/auth/login"): ["200", "422"],
     ("post", "/api/gateway/v1/auth/logout"): ["204"],
@@ -48,6 +52,7 @@ SCHEMA_PROPERTIES = {
     "AuthenticatedUser": ["accessToken", "expiresIn", "role", "tokenType", "username"],
     "CreateCustomProvider": ["api", "apiKey", "baseURL", "displayName", "models", "providerId"],
     "Credentials": ["password", "username"],
+    "CreateManagedUser": ["password", "username"],
     "CurrentUser": ["role", "username"],
     "DirectoryListing": ["directories", "directory", "truncated"],
     "OnlinePluginImport": ["packageName", "version"],
@@ -62,6 +67,7 @@ SCHEMA_PROPERTIES = {
     "PluginScope": ["includeDisabledUsers", "type", "usernames"],
     "RegisteredUser": ["created_at", "disabled", "role", "username"],
     "RegisteredUsers": ["users"],
+    "UpdateManagedUser": ["disabled", "password"],
 }
 
 TABLE_COLUMNS = {

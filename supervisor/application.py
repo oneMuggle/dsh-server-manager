@@ -114,6 +114,8 @@ class Supervisor:
             "username": username,
             "password_version": 1,
             "role": user["role"],
+            "disabled": False,
+            "created_at": user["created_at"],
             "ready": ready,
         }
 
