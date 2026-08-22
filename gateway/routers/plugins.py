@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import os
-import secrets
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -14,6 +12,7 @@ from ..dependencies import ApiToken
 from ..runtime import config
 from ..schemas.plugins import OnlinePluginImport, PluginAssignment
 from ..services.auth import require_admin
+from ..services.spool import SpoolError, receive_spool
 from ..services.supervisor import (
     SupervisorError,
     assign_plugin,
@@ -130,54 +129,34 @@ async def registry_plugin_versions(
 )
 async def offline_plugin_import(request: Request, token: ApiToken) -> dict:
     user = require_admin(request, token)
-    content_length = request.headers.get("content-length")
-    if content_length is not None:
-        try:
-            declared_size = int(content_length)
-        except ValueError as error:
-            raise HTTPException(status_code=400, detail="无效的 Content-Length") from error
-        if declared_size <= 0 or declared_size > config.max_upload_bytes:
-            raise HTTPException(status_code=413, detail="离线插件包必须小于 100 MB")
-
-    spool_name = f"{secrets.token_hex(16)}.plugin.tgz"
-    spool_path = config.upload_spool_path / spool_name
-    descriptor = os.open(
-        spool_path,
-        os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
-        0o600,
-    )
-    size = 0
     try:
-        async for chunk in request.stream():
-            size += len(chunk)
-            if size > config.max_upload_bytes:
-                raise HTTPException(status_code=413, detail="离线插件包不能超过 100 MB")
-            remaining = memoryview(chunk)
-            while remaining:
-                written = os.write(descriptor, remaining)
-                if not written:
-                    raise OSError("failed to write plugin spool")
-                remaining = remaining[written:]
-        if size == 0:
-            raise HTTPException(status_code=400, detail="离线插件包不能为空")
-        os.fsync(descriptor)
-    except BaseException:
-        os.close(descriptor)
-        descriptor = -1
-        spool_path.unlink(missing_ok=True)
+        spool = await receive_spool(
+            request.stream(),
+            config.upload_spool_path,
+            suffix=".plugin.tgz",
+            max_bytes=config.max_upload_bytes,
+            content_length=request.headers.get("content-length"),
+            allow_empty=False,
+        )
+    except SpoolError as error:
+        if error.code == "invalid_length":
+            raise HTTPException(status_code=400, detail="无效的 Content-Length") from error
+        if error.code in {"declared_empty", "declared_too_large"}:
+            raise HTTPException(status_code=413, detail="离线插件包必须小于 100 MB") from error
+        if error.code == "too_large":
+            raise HTTPException(status_code=413, detail="离线插件包不能超过 100 MB") from error
+        if error.code == "empty":
+            raise HTTPException(status_code=400, detail="离线插件包不能为空") from error
         raise
-    finally:
-        if descriptor >= 0:
-            os.close(descriptor)
 
     try:
         return await import_offline_plugin(
             config.control_socket_path,
-            spool_name,
+            spool.name,
             str(user["username"]),
         )
     except SupervisorError as error:
-        spool_path.unlink(missing_ok=True)
+        spool.path.unlink(missing_ok=True)
         status = 400 if error.code == "bad_request" else 503
         raise HTTPException(status_code=status, detail=str(error)) from error
 

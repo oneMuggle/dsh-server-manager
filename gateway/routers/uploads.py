@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-import os
-import secrets
-
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 
@@ -10,6 +7,7 @@ from ..dependencies import ApiToken
 from ..runtime import config
 from ..schemas.uploads import DirectoryListing
 from ..services.auth import require_session
+from ..services.spool import SpoolError, receive_spool
 from ..services.supervisor import (
     SupervisorError,
     install_upload,
@@ -69,57 +67,33 @@ async def upload_file(
     if len(directory) > 512 or len(name) > 255:
         raise HTTPException(status_code=400, detail="目标目录或文件名过长")
 
-    content_length = request.headers.get("content-length")
-    if content_length is not None:
-        try:
-            declared_size = int(content_length)
-        except ValueError as error:
-            raise HTTPException(status_code=400, detail="无效的 Content-Length") from error
-        if declared_size < 0:
-            raise HTTPException(status_code=400, detail="无效的 Content-Length")
-        if declared_size > config.max_upload_bytes:
-            raise HTTPException(status_code=413, detail="单个文件不能超过 100 MB")
-
-    spool_name = f"{secrets.token_hex(16)}.upload"
-    spool_path = config.upload_spool_path / spool_name
-    descriptor = os.open(
-        spool_path,
-        os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
-        0o600,
-    )
-    size = 0
     try:
-        async for chunk in request.stream():
-            size += len(chunk)
-            if size > config.max_upload_bytes:
-                raise HTTPException(status_code=413, detail="单个文件不能超过 100 MB")
-            remaining = memoryview(chunk)
-            while remaining:
-                written = os.write(descriptor, remaining)
-                if written == 0:
-                    raise OSError("failed to write upload spool")
-                remaining = remaining[written:]
-        os.fsync(descriptor)
-    except BaseException:
-        os.close(descriptor)
-        descriptor = -1
-        spool_path.unlink(missing_ok=True)
+        spool = await receive_spool(
+            request.stream(),
+            config.upload_spool_path,
+            suffix=".upload",
+            max_bytes=config.max_upload_bytes,
+            content_length=request.headers.get("content-length"),
+            allow_empty=True,
+        )
+    except SpoolError as error:
+        if error.code == "invalid_length":
+            raise HTTPException(status_code=400, detail="无效的 Content-Length") from error
+        if error.code in {"declared_too_large", "too_large"}:
+            raise HTTPException(status_code=413, detail="单个文件不能超过 100 MB") from error
         raise
-    finally:
-        if descriptor >= 0:
-            os.close(descriptor)
 
     try:
         result = await install_upload(
             config.control_socket_path,
             str(user["username"]),
-            spool_name,
+            spool.name,
             directory,
             name,
-            size,
+            spool.size,
         )
     except SupervisorError as error:
-        spool_path.unlink(missing_ok=True)
+        spool.path.unlink(missing_ok=True)
         status = 400 if error.code == "bad_request" else 503
         raise HTTPException(status_code=status, detail=str(error)) from error
 
