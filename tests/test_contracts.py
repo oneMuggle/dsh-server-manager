@@ -43,6 +43,7 @@ PUBLIC_RESPONSES = {
     ("post", "/api/gateway/v1/auth/logout"): ["204"],
     ("get", "/api/gateway/v1/auth/me"): ["200"],
     ("post", "/api/gateway/v1/auth/register"): ["201", "422"],
+    ("post", "/api/gateway/v1/auth/token"): ["200", "422"],
     ("get", "/api/gateway/v1/files/directories"): ["200", "422"],
     ("post", "/api/gateway/v1/files/upload"): ["200", "422"],
     ("get", "/api/gateway/v1/health"): ["200"],
@@ -56,6 +57,7 @@ SCHEMA_PROPERTIES = {
     "CurrentUser": ["role", "username"],
     "DirectoryListing": ["directories", "directory", "truncated"],
     "OnlinePluginImport": ["packageName", "version"],
+    "OAuthToken": ["access_token", "expires_in", "token_type"],
     "PluginAssignment": [
         "action",
         "applyToFutureUsers",
@@ -170,7 +172,15 @@ class OpenApiContractTests(unittest.TestCase):
                     "in": "cookie",
                     "name": "dsh_session",
                 },
-                "HTTPBearer": {"type": "http", "scheme": "bearer"},
+                "OAuth2PasswordBearer": {
+                    "type": "oauth2",
+                    "flows": {
+                        "password": {
+                            "scopes": {},
+                            "tokenUrl": "/api/gateway/v1/auth/token",
+                        }
+                    },
+                },
             },
         )
         schemas = schema["components"]["schemas"]

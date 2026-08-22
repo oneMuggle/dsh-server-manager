@@ -7,7 +7,7 @@ from dataclasses import replace
 from unittest.mock import patch
 
 from fastapi import HTTPException, Request
-from fastapi.security import HTTPAuthorizationCredentials
+from fastapi.security import OAuth2PasswordRequestForm
 
 from common.security import hash_password
 
@@ -20,7 +20,7 @@ from gateway.proxy.transforms import (
     patch_connection_module,
     patch_html,
 )
-from gateway.routers.auth import login, register, register_page
+from gateway.routers.auth import login, oauth_token, register, register_page
 from gateway.runtime import SWAGGER_UI_STATIC_DIR, config
 from gateway.schemas.auth import Credentials
 from gateway.services.auth import parse_session, verify_credentials
@@ -212,7 +212,11 @@ class ManagementPageTests(unittest.TestCase):
     def test_openapi_describes_cookie_and_bearer_authentication(self) -> None:
         schema = app.openapi()
         security_schemes = schema["components"]["securitySchemes"]
-        self.assertEqual(security_schemes["HTTPBearer"]["scheme"], "bearer")
+        password_flow = security_schemes["OAuth2PasswordBearer"]["flows"]["password"]
+        self.assertEqual(
+            password_flow["tokenUrl"],
+            "/api/gateway/v1/auth/token",
+        )
         self.assertEqual(security_schemes["APIKeyCookie"]["in"], "cookie")
 
     def test_custom_provider_api_is_described_with_ui_field_names(self) -> None:
@@ -256,6 +260,45 @@ class ManagementPageTests(unittest.TestCase):
 
 
 class TokenAuthenticationTests(unittest.TestCase):
+    def test_oauth_password_exchange_returns_bearer_without_cookie(self) -> None:
+        user = {
+            "username": "alice",
+            "role": "user",
+            "disabled": False,
+            "password_version": 3,
+        }
+        request = Request(
+            {
+                "type": "http",
+                "method": "POST",
+                "path": "/api/gateway/v1/auth/token",
+                "headers": [],
+                "client": ("192.0.2.11", 12345),
+                "app": app,
+            }
+        )
+        app.state.session_secret = b"test-session-secret"
+        form = OAuth2PasswordRequestForm(
+            username="alice",
+            password="change-me-123",
+            scope="",
+            grant_type="password",
+            client_id=None,
+            client_secret=None,
+        )
+
+        with patch(
+            "gateway.routers.auth.verify_credentials",
+            return_value=user,
+        ):
+            response = asyncio.run(oauth_token(request, form))
+
+        self.assertEqual(response.token_type, "bearer")
+        self.assertEqual(response.expires_in, config.session_ttl_seconds)
+        self.assertEqual(
+            parse_session(response.access_token, app.state.session_secret)["pv"],
+            3,
+        )
     def test_shared_credential_verification_accepts_an_enabled_user(self) -> None:
         user = {
             "username": "alice",
@@ -322,10 +365,6 @@ class TokenAuthenticationTests(unittest.TestCase):
         self.assertEqual(payload["pv"], 1)
 
     def test_bearer_token_takes_precedence_over_cookie(self) -> None:
-        bearer = HTTPAuthorizationCredentials(
-            scheme="Bearer",
-            credentials="bearer-token",
-        )
         bearer_request = Request(
             {
                 "type": "http",
@@ -333,7 +372,7 @@ class TokenAuthenticationTests(unittest.TestCase):
             }
         )
         self.assertEqual(
-            _api_token(bearer_request, "cookie-token", bearer),
+            _api_token(bearer_request, "cookie-token", "bearer-token"),
             "bearer-token",
         )
 

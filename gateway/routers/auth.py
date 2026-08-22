@@ -3,18 +3,20 @@ from __future__ import annotations
 import asyncio
 import re
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.security import OAuth2PasswordRequestForm
 
 from common.security import hash_password
 from common.storage.users import RegistryError
 
 from ..dependencies import ApiToken
 from ..runtime import config
-from ..schemas.auth import AuthenticatedUser, Credentials, CurrentUser
+from ..schemas.auth import AuthenticatedUser, Credentials, CurrentUser, OAuthToken
 from ..services.auth import (
     FixedWindowLimiter,
     authenticated_response,
+    make_session_token,
     request_user,
     require_session,
     user_role,
@@ -33,6 +35,28 @@ register_limiter = FixedWindowLimiter(attempts=5, seconds=300)
 
 def client_key(request: Request) -> str:
     return request.client.host if request.client else "unknown"
+
+
+async def authenticated_credentials(
+    request: Request,
+    username: str,
+    password: str,
+) -> dict:
+    client = client_key(request)
+    account_key = f"{client}:{username}"
+    if not login_ip_limiter.allow(client) or not login_account_limiter.allow(account_key):
+        raise HTTPException(status_code=429, detail="登录请求过于频繁")
+    try:
+        user = await verify_credentials(username, password)
+    except RegistryError as error:
+        raise HTTPException(status_code=503, detail="用户服务不可用") from error
+    if user is None:
+        raise HTTPException(
+            status_code=401,
+            detail="用户名或密码错误",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return user
 
 
 @router.get("/login", response_class=HTMLResponse, include_in_schema=False)
@@ -98,18 +122,27 @@ async def register(request: Request, credentials: Credentials) -> Response:
     summary="登录",
 )
 async def login(request: Request, credentials: Credentials) -> Response:
-    client = client_key(request)
-    account_key = f"{client}:{credentials.username}"
-    if not login_ip_limiter.allow(client) or not login_account_limiter.allow(account_key):
-        raise HTTPException(status_code=429, detail="登录请求过于频繁")
-    try:
-        user = await verify_credentials(credentials.username, credentials.password)
-    except RegistryError as error:
-        raise HTTPException(status_code=503, detail="用户服务不可用") from error
-    if user is None:
-        raise HTTPException(status_code=401, detail="用户名或密码错误")
-
+    user = await authenticated_credentials(
+        request, credentials.username, credentials.password
+    )
     return authenticated_response(request, user)
+
+
+@router.post(
+    "/api/gateway/v1/auth/token",
+    response_model=OAuthToken,
+    tags=["认证"],
+    summary="使用账号密码获取 Bearer Token",
+)
+async def oauth_token(
+    request: Request,
+    form: OAuth2PasswordRequestForm = Depends(),
+) -> OAuthToken:
+    user = await authenticated_credentials(request, form.username, form.password)
+    return OAuthToken(
+        access_token=make_session_token(request, user),
+        expires_in=config.session_ttl_seconds,
+    )
 
 
 @router.post(

@@ -3,18 +3,18 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, Request, Security
-from fastapi.security import APIKeyCookie, HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.security import APIKeyCookie, OAuth2PasswordBearer
 
 from .runtime import config
 
 
 session_cookie = APIKeyCookie(name=config.cookie_name, auto_error=False)
-bearer_token = HTTPBearer(auto_error=False)
+bearer_token = OAuth2PasswordBearer(
+    tokenUrl="/api/gateway/v1/auth/token",
+    auto_error=False,
+)
 SessionCookie = Annotated[str | None, Security(session_cookie)]
-BearerToken = Annotated[
-    HTTPAuthorizationCredentials | None,
-    Security(bearer_token),
-]
+BearerToken = Annotated[str | None, Security(bearer_token)]
 
 
 def api_token(
@@ -29,7 +29,7 @@ def api_token(
                 detail="无效的 Authorization 请求头",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        return bearer.credentials
+        return bearer
     return cookie
 
 

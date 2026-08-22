@@ -21,3 +21,9 @@ class AuthenticatedUser(CurrentUser):
     access_token: str = Field(alias="accessToken")
     token_type: Literal["Bearer"] = Field(alias="tokenType")
     expires_in: int = Field(alias="expiresIn")
+
+
+class OAuthToken(BaseModel):
+    access_token: str
+    token_type: Literal["bearer"] = "bearer"
+    expires_in: int
