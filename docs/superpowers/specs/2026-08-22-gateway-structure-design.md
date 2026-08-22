@@ -197,7 +197,7 @@ The refactor follows red-green-refactor in independently deployable commits. Tes
 - strict architecture tests that reject obsolete top-level modules and duplicate `Config.from_environment()` calls;
 - the existing OpenAPI, authentication, user, plugin, upload, Provider, proxy, and web-asset contracts.
 
-Final verification includes the complete Python suite, bytecode compilation, `git diff --check`, Docker image build, Compose deployment on `3081`, health/login/docs/static-asset checks, authenticated login, and unchanged SQLite table counts.
+Final verification includes the complete Python suite, bytecode compilation, `git diff --check`, Docker image build, Compose deployment on `3081`, health/login/docs/static-asset checks, an authenticated identity request, and unchanged SQLite table counts.
 
 ## Commit Boundaries
 
