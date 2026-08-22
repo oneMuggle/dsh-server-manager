@@ -14,22 +14,22 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable
 from urllib.parse import urlsplit
 
-from common.storage.users import get_user
-from gateway.plugins import (
+from common.storage.assignments import (
     enabled_aliases,
     enabled_package_links,
-    get_job,
-    get_plugin_version,
     get_user_plugin,
-    list_plugin_versions,
     mark_user_plugins_ready,
-    register_plugin_version,
     remove_user_plugin,
-    set_job_item_status,
-    set_job_status,
     set_plugin_default,
     set_user_plugin,
 )
+from common.storage.plugin_catalog import (
+    get_plugin_version,
+    list_plugin_versions,
+    register_plugin_version,
+)
+from common.storage.plugin_jobs import get_job, set_job_item_status, set_job_status
+from common.storage.users import get_user
 
 
 PACKAGE_PATTERN = re.compile(

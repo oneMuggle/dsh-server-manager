@@ -17,6 +17,9 @@ from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+from common.storage.assignments import apply_plugin_defaults
+from common.storage.plugin_catalog import get_plugin_version
+from common.storage.plugin_jobs import create_job, unfinished_job_ids
 from common.storage.users import (
     RegistryError,
     add_user,
@@ -26,12 +29,6 @@ from common.storage.users import (
     replace_registry,
 )
 from gateway.auth import hash_password
-from gateway.plugins import (
-    apply_plugin_defaults,
-    create_job,
-    get_plugin_version,
-    unfinished_job_ids,
-)
 
 from .firewall import FirewallError, TenantNetwork, apply_firewall
 from .plugins import (

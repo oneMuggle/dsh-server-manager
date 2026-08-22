@@ -1,6 +1,12 @@
 from __future__ import annotations
 
 import sqlite3
+from pathlib import Path
+from typing import Any
+
+from common.errors import PluginStoreError
+
+from .database import read_connection, utc_now, write_connection
 
 
 def create_plugin_schema(connection: sqlite3.Connection) -> None:
@@ -83,3 +89,162 @@ def create_plugin_schema(connection: sqlite3.Connection) -> None:
             ON plugin_job_items(job_id, status);
         """
     )
+
+
+def register_plugin_version(
+    path: Path,
+    *,
+    package_name: str,
+    version: str,
+    source_type: str,
+    artifact_sha256: str,
+    release_path: str,
+    resolver_alias: str,
+) -> tuple[int, int]:
+    try:
+        with write_connection(path) as connection:
+            connection.execute(
+                "INSERT INTO plugins (package_name, created_at) VALUES (?, ?) ON CONFLICT(package_name) DO NOTHING",
+                (package_name, utc_now()),
+            )
+            plugin_id = int(
+                connection.execute(
+                    "SELECT id FROM plugins WHERE package_name = ?", (package_name,)
+                ).fetchone()[0]
+            )
+            connection.execute(
+                """
+                INSERT INTO plugin_versions (
+                    plugin_id, version, source_type, artifact_sha256,
+                    release_path, resolver_alias, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(plugin_id, version, artifact_sha256) DO UPDATE SET
+                    source_type = excluded.source_type,
+                    release_path = excluded.release_path,
+                    resolver_alias = excluded.resolver_alias,
+                    status = 'ready'
+                """,
+                (
+                    plugin_id,
+                    version,
+                    source_type,
+                    artifact_sha256,
+                    release_path,
+                    resolver_alias,
+                    utc_now(),
+                ),
+            )
+            version_id = int(
+                connection.execute(
+                    """
+                    SELECT id FROM plugin_versions
+                    WHERE plugin_id = ? AND version = ? AND artifact_sha256 = ?
+                    """,
+                    (plugin_id, version, artifact_sha256),
+                ).fetchone()[0]
+            )
+            return plugin_id, version_id
+    except sqlite3.DatabaseError as error:
+        raise PluginStoreError("unable to register plugin version") from error
+
+
+def get_plugin_version(path: Path, version_id: int) -> dict[str, Any] | None:
+    try:
+        with read_connection(path) as connection:
+            row = connection.execute(
+                """
+                SELECT pv.*, p.package_name
+                FROM plugin_versions pv JOIN plugins p ON p.id = pv.plugin_id
+                WHERE pv.id = ? AND pv.status = 'ready'
+                """,
+                (version_id,),
+            ).fetchone()
+        return dict(row) if row is not None else None
+    except sqlite3.DatabaseError as error:
+        raise PluginStoreError("unable to read plugin version") from error
+
+
+def list_plugin_versions(path: Path) -> list[dict[str, Any]]:
+    try:
+        with read_connection(path) as connection:
+            rows = connection.execute(
+                """
+                SELECT pv.*, p.package_name
+                FROM plugin_versions pv JOIN plugins p ON p.id = pv.plugin_id
+                WHERE pv.status = 'ready' ORDER BY pv.id
+                """
+            ).fetchall()
+        return [dict(row) for row in rows]
+    except sqlite3.DatabaseError as error:
+        raise PluginStoreError("unable to read plugin versions") from error
+
+
+def list_plugins(path: Path) -> list[dict[str, Any]]:
+    try:
+        with read_connection(path) as connection:
+            plugins = connection.execute(
+                """
+                SELECT p.id, p.package_name, p.display_name,
+                       COUNT(DISTINCT up.username) AS assigned_users,
+                       COUNT(DISTINCT CASE WHEN up.enabled = 1 THEN up.username END) AS enabled_users
+                FROM plugins p
+                LEFT JOIN user_plugins up ON up.plugin_id = p.id
+                GROUP BY p.id
+                ORDER BY p.package_name
+                """
+            ).fetchall()
+            result: list[dict[str, Any]] = []
+            for plugin in plugins:
+                versions = connection.execute(
+                    """
+                    SELECT id, version, source_type, artifact_sha256, resolver_alias, created_at
+                    FROM plugin_versions WHERE plugin_id = ? AND status = 'ready'
+                    ORDER BY created_at DESC
+                    """,
+                    (plugin["id"],),
+                ).fetchall()
+                users = connection.execute(
+                    """
+                    SELECT up.username, up.plugin_version_id, up.enabled, up.state,
+                           up.last_error, pv.version
+                    FROM user_plugins up
+                    JOIN plugin_versions pv ON pv.id = up.plugin_version_id
+                    WHERE up.plugin_id = ? ORDER BY up.username
+                    """,
+                    (plugin["id"],),
+                ).fetchall()
+                default = connection.execute(
+                    "SELECT * FROM plugin_defaults WHERE plugin_id = ?", (plugin["id"],)
+                ).fetchone()
+                result.append(
+                    {
+                        "id": int(plugin["id"]),
+                        "packageName": str(plugin["package_name"]),
+                        "displayName": plugin["display_name"],
+                        "assignedUsers": int(plugin["assigned_users"]),
+                        "enabledUsers": int(plugin["enabled_users"]),
+                        "versions": [dict(row) for row in versions],
+                        "users": [
+                            {
+                                "username": row["username"],
+                                "versionId": row["plugin_version_id"],
+                                "version": row["version"],
+                                "enabled": bool(row["enabled"]),
+                                "state": row["state"],
+                                "error": row["last_error"],
+                            }
+                            for row in users
+                        ],
+                        "default": (
+                            {
+                                "versionId": int(default["plugin_version_id"]),
+                                "enabled": bool(default["enable_for_new_users"]),
+                            }
+                            if default is not None and default["assign_to_new_users"]
+                            else None
+                        ),
+                    }
+                )
+            return result
+    except sqlite3.DatabaseError as error:
+        raise PluginStoreError("unable to list plugins") from error

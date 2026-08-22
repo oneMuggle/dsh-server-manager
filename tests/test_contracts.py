@@ -9,7 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from gateway.main import app
-from gateway.registry import initialize_registry
+from common.storage.users import initialize_registry
 from gateway.supervisor_client import SupervisorError, _request
 
 

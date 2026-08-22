@@ -9,16 +9,14 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 from gateway.plugin_ui import plugin_admin_page
-from gateway.plugins import (
+from common.storage.assignments import (
     apply_plugin_defaults,
-    create_job,
-    get_job,
-    list_plugins,
-    register_plugin_version,
     set_plugin_default,
     set_user_plugin,
 )
-from gateway.registry import add_user, initialize_registry, replace_registry
+from common.storage.plugin_catalog import list_plugins, register_plugin_version
+from common.storage.plugin_jobs import create_job, get_job
+from common.storage.users import add_user, initialize_registry, replace_registry
 from supervisor.plugins import (
     PluginOperationError,
     SharedPluginManager,
