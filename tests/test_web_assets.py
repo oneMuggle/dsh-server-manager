@@ -177,11 +177,23 @@ class ManagementWebAssetTests(unittest.TestCase):
 
         combined = (ADMIN_WIDGET + LOGOUT_WIDGET).decode()
         self.assertIn('href="/admin"', combined)
-        for asset in ("proxy-widgets.css", "logout-widget.js"):
+        for asset in ("proxy-widgets.css", "proxy-widgets.js"):
             self.assertIn(f"/gateway-assets/{asset}", combined)
             self.assertTrue((MANAGEMENT_STATIC_ROOT / asset).is_file())
         self.assertNotIn("<style>", combined)
         self.assertNotIn("fetch(", combined)
+
+        script = (MANAGEMENT_STATIC_ROOT / "proxy-widgets.js").read_text()
+        self.assertIn('[data-slot="sidebar.settings"]', script)
+        self.assertIn("settings.before(actions)", script)
+        self.assertIn("dshgw-has-sidebar-actions", script)
+        self.assertIn("MutationObserver", script)
+        for action_id in (
+            "dshgw-upload-button",
+            "dshgw-admin-button",
+            "dshgw-logout-button",
+        ):
+            self.assertIn(action_id, script)
 
 
 if __name__ == "__main__":
