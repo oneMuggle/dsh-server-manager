@@ -169,6 +169,32 @@ def add_user(path: Path, user: dict[str, Any]) -> None:
         raise RegistryError("unable to update user database") from error
 
 
+def update_user(path: Path, user: dict[str, Any]) -> dict[str, Any]:
+    """Atomically replace one existing user row and return its canonical value."""
+
+    values = _user_values(user)
+    try:
+        with write_connection(path) as connection:
+            cursor = connection.execute(
+                """
+                UPDATE users SET
+                    os_user = ?, uid = ?, port = ?, role = ?, password = ?,
+                    password_version = ?, created_at = ?, disabled = ?
+                WHERE username = ?
+                """,
+                (*values[1:], values[0]),
+            )
+            if cursor.rowcount != 1:
+                raise LookupError("user does not exist")
+        return dict(user)
+    except LookupError:
+        raise
+    except sqlite3.IntegrityError as error:
+        raise RegistryError("user database constraint violation") from error
+    except sqlite3.DatabaseError as error:
+        raise RegistryError("unable to update user database") from error
+
+
 def replace_registry(path: Path, registry: dict[str, Any]) -> None:
     registry = _validate_registry(registry)
     try:

@@ -14,6 +14,7 @@ from common.storage.users import (
     add_user,
     get_user,
     replace_registry,
+    update_user as update_stored_user,
 )
 from common.security import hash_password
 
@@ -114,6 +115,85 @@ class Supervisor:
             "password_version": 1,
             "role": user["role"],
             "ready": ready,
+        }
+
+    async def update_user(
+        self,
+        username: str,
+        *,
+        password: dict[str, Any] | None = None,
+        disabled: bool | None = None,
+    ) -> dict[str, Any]:
+        if password is None and disabled is None:
+            raise ValueError("update requires password or disabled")
+        if password is not None and not _valid_password_record(password):
+            raise ValueError("invalid password record")
+
+        should_start = False
+        async with self.registry_lock:
+            registry = load_user_registry(self.config)
+            current = registry["users"].get(username)
+            if not isinstance(current, dict):
+                raise LookupError("user does not exist")
+            if username == ADMIN_USERNAME and disabled is True:
+                raise PermissionError("admin cannot be disabled")
+
+            candidate_user = dict(current)
+            if password is not None:
+                candidate_user["password"] = password
+                candidate_user["password_version"] = (
+                    int(current["password_version"]) + 1
+                )
+            was_disabled = current.get("disabled") is True
+            if disabled is not None:
+                candidate_user["disabled"] = disabled
+            is_disabled = candidate_user.get("disabled") is True
+            state_changed = was_disabled != is_disabled
+            candidate_registry = {
+                "version": 1,
+                "users": {**registry["users"], username: candidate_user},
+            }
+
+            if state_changed and is_disabled:
+                await self.tenants.stop_user(username)
+                try:
+                    update_stored_user(self.config.registry_path, candidate_user)
+                except RegistryError as error:
+                    self.tenants.start(current)
+                    raise RuntimeError("unable to persist user") from error
+                apply_firewall(
+                    _network_rules(candidate_registry),
+                    gateway_port=self.config.gateway_port,
+                )
+            elif state_changed:
+                apply_firewall(
+                    _network_rules(candidate_registry),
+                    gateway_port=self.config.gateway_port,
+                )
+                try:
+                    update_stored_user(self.config.registry_path, candidate_user)
+                except RegistryError as error:
+                    apply_firewall(
+                        _network_rules(registry),
+                        gateway_port=self.config.gateway_port,
+                    )
+                    raise RuntimeError("unable to persist user") from error
+                self.tenants.start(candidate_user)
+                should_start = True
+            else:
+                try:
+                    update_stored_user(self.config.registry_path, candidate_user)
+                except RegistryError as error:
+                    raise RuntimeError("unable to persist user") from error
+
+        if should_start:
+            self._schedule_plugin_reconcile(username)
+        return {
+            "username": candidate_user["username"],
+            "role": candidate_user["role"],
+            "disabled": candidate_user["disabled"],
+            "created_at": candidate_user["created_at"],
+            "password_version": candidate_user["password_version"],
         }
 
     async def import_online_plugin(

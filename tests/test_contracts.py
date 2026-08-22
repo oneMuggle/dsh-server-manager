@@ -13,6 +13,7 @@ from common.contracts.control import (
     AssignPluginRequest,
     ControlRequestError,
     CreateUserRequest,
+    UpdateUserRequest,
     parse_control_request,
 )
 from gateway.application import app, create_app
@@ -259,6 +260,7 @@ class TypedControlContractTests(unittest.IsolatedAsyncioTestCase):
     def test_each_wire_action_parses_to_a_typed_request(self) -> None:
         fixtures = [
             ({"action": "create_user", "username": "alice", "password": {}}, CreateUserRequest),
+            ({"action": "update_user", "username": "alice", "disabled": True}, UpdateUserRequest),
             ({"action": "install_upload", "username": "alice", "spool_name": "a", "directory": ".", "filename": "a.txt", "size": 1}, "InstallUploadRequest"),
             ({"action": "list_upload_directories", "username": "alice", "directory": "."}, "ListUploadDirectoriesRequest"),
             ({"action": "plugin_online_import", "package_name": "pkg", "requested_version": "latest", "created_by": "admin"}, "ImportOnlinePluginRequest"),
@@ -282,6 +284,16 @@ class TypedControlContractTests(unittest.IsolatedAsyncioTestCase):
             "enabled_after_install": True,
             "apply_to_future_users": False,
             "created_by": "admin",
+        }
+        request = parse_control_request(payload)
+        self.assertEqual(request.model_dump(exclude_none=True), payload)
+
+    def test_user_update_round_trips_optional_fields(self) -> None:
+        payload = {
+            "action": "update_user",
+            "username": "alice",
+            "password": {"algorithm": "scrypt"},
+            "disabled": False,
         }
         request = parse_control_request(payload)
         self.assertEqual(request.model_dump(exclude_none=True), payload)

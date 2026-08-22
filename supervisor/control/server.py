@@ -18,6 +18,7 @@ from common.contracts.control import (
     ImportOnlinePluginRequest,
     InstallUploadRequest,
     ListUploadDirectoriesRequest,
+    UpdateUserRequest,
     error_response,
     parse_control_request,
     success_response,
@@ -66,6 +67,12 @@ class ControlServer:
                 try:
                     if isinstance(request, CreateUserRequest):
                         result = await self.owner.create_user(request.username, request.password)
+                    elif isinstance(request, UpdateUserRequest):
+                        result = await self.owner.update_user(
+                            request.username,
+                            password=request.password,
+                            disabled=request.disabled,
+                        )
                     elif isinstance(request, InstallUploadRequest):
                         result = await self.owner.install_upload(
                             request.username,
@@ -97,6 +104,10 @@ class ControlServer:
                     response = success_response(**result)
                 except FileExistsError:
                     response = error_response("conflict", "用户名已存在")
+                except LookupError:
+                    response = error_response("not_found", "用户不存在")
+                except PermissionError:
+                    response = error_response("conflict", "管理员账号不能停用")
                 except (TypeError, ValueError, PluginOperationError) as error:
                     response = error_response("bad_request", str(error))
                 except FirewallError:

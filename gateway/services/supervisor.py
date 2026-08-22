@@ -56,6 +56,21 @@ async def create_user(
     )
 
 
+async def update_user(
+    socket_path: Path,
+    username: str,
+    *,
+    password_record: dict[str, Any] | None = None,
+    disabled: bool | None = None,
+) -> dict[str, Any]:
+    request: dict[str, Any] = {"action": "update_user", "username": username}
+    if password_record is not None:
+        request["password"] = password_record
+    if disabled is not None:
+        request["disabled"] = disabled
+    return await _request(socket_path, request, timeout=30)
+
+
 async def install_upload(
     socket_path: Path,
     username: str,

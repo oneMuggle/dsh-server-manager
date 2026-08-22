@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any, Literal, Union
 
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError, model_validator
 
 from common.errors import ControlRequestError
 
@@ -15,6 +15,19 @@ class CreateUserRequest(_ControlRequest):
     action: Literal["create_user"]
     username: str
     password: dict[str, Any]
+
+
+class UpdateUserRequest(_ControlRequest):
+    action: Literal["update_user"]
+    username: str
+    password: dict[str, Any] | None = None
+    disabled: bool | None = None
+
+    @model_validator(mode="after")
+    def require_change(self) -> "UpdateUserRequest":
+        if self.password is None and self.disabled is None:
+            raise ValueError("update requires password or disabled")
+        return self
 
 
 class InstallUploadRequest(_ControlRequest):
@@ -64,6 +77,7 @@ class AssignPluginRequest(_ControlRequest):
 ControlRequest = Annotated[
     Union[
         CreateUserRequest,
+        UpdateUserRequest,
         InstallUploadRequest,
         ListUploadDirectoriesRequest,
         ImportOnlinePluginRequest,
@@ -102,6 +116,7 @@ __all__ = [
     "ImportOnlinePluginRequest",
     "InstallUploadRequest",
     "ListUploadDirectoriesRequest",
+    "UpdateUserRequest",
     "error_response",
     "parse_control_request",
     "success_response",

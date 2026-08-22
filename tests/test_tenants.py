@@ -51,3 +51,29 @@ class TenantManagerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(list(manager.tasks), ["alice"])
         release.set()
         await manager.stop()
+
+    async def test_stop_user_cleans_state_and_allows_restart(self) -> None:
+        starts: list[str] = []
+
+        class WaitingTenantManager(TenantManager):
+            async def _run(self, user: dict) -> None:
+                starts.append(str(user["username"]))
+                await asyncio.Event().wait()
+
+        manager = WaitingTenantManager(
+            users_root=Path("/unused"),
+            harness_cli="/unused/dsh",
+        )
+        user = {"username": "alice", "os_user": "dsh-alice", "port": 3101}
+        manager.start(user)
+        await asyncio.sleep(0)
+
+        self.assertTrue(await manager.stop_user("alice"))
+        self.assertNotIn("alice", manager.tasks)
+        self.assertNotIn("alice", manager.ready)
+        self.assertNotIn("alice", manager.processes)
+
+        manager.start(user)
+        await asyncio.sleep(0)
+        self.assertEqual(starts, ["alice", "alice"])
+        await manager.stop()

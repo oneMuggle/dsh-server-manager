@@ -13,6 +13,7 @@ from common.storage.users import (
     list_users,
     load_registry,
     replace_registry,
+    update_user,
 )
 
 
@@ -88,6 +89,21 @@ class RegistryDatabaseTests(unittest.TestCase):
         )
         with self.assertRaises(RegistryError):
             add_user(self.database, _user("alice", 20003, 3104))
+
+    def test_updates_one_user_without_rewriting_the_registry(self) -> None:
+        initialize_registry(self.database)
+        alice = _user("alice", 20001, 3102)
+        bob = _user("bob", 20002, 3103)
+        replace_registry(
+            self.database,
+            {"version": 1, "users": {"alice": alice, "bob": bob}},
+        )
+        updated = {**alice, "disabled": True, "password_version": 2}
+
+        self.assertEqual(update_user(self.database, updated), updated)
+        self.assertEqual(get_user(self.database, "bob"), bob)
+        with self.assertRaises(LookupError):
+            update_user(self.database, _user("missing", 20003, 3104))
 
 
 if __name__ == "__main__":

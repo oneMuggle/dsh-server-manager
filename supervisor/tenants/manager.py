@@ -132,6 +132,20 @@ class TenantManager:
             return False
         return await self.wait_ready(username)
 
+    async def stop_user(self, username: str) -> bool:
+        task = self.tasks.pop(username, None)
+        if task is None:
+            self.ready.pop(username, None)
+            self.processes.pop(username, None)
+            self.restart_requests.discard(username)
+            return False
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        self.ready.pop(username, None)
+        self.processes.pop(username, None)
+        self.restart_requests.discard(username)
+        return True
+
     async def stop(self) -> None:
         self.stopping = True
         for task in self.tasks.values():
