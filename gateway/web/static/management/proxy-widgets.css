@@ -8,8 +8,8 @@ body > .dshgw-sidebar-action { display: none; }
   display: grid;
   flex: 0 0 auto;
   width: 100%;
-  gap: 2px;
-  margin-bottom: 2px;
+  gap: 10px;
+  margin-bottom: 8px;
 }
 
 #dshgw-sidebar-actions .dshgw-sidebar-action {
@@ -19,6 +19,7 @@ body > .dshgw-sidebar-action { display: none; }
   font: inherit;
   text-decoration: none;
   cursor: pointer;
+  margin: 0 !important;
 }
 
 #dshgw-sidebar-actions .dshgw-sidebar-action svg {
@@ -28,4 +29,12 @@ body > .dshgw-sidebar-action { display: none; }
 #dshgw-sidebar-actions .dshgw-sidebar-action:disabled {
   cursor: wait;
   opacity: .55;
+}
+
+.dshgw-sidebar-collapsed #dshgw-sidebar-actions {
+  gap: 12px;
+}
+
+.dshgw-sidebar-collapsed .dshgw-sidebar-label {
+  display: none !important;
 }

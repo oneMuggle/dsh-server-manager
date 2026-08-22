@@ -187,6 +187,9 @@ class ManagementWebAssetTests(unittest.TestCase):
         self.assertIn('[data-slot="sidebar.settings"]', script)
         self.assertIn("settings.before(actions)", script)
         self.assertIn("dshgw-has-sidebar-actions", script)
+        self.assertIn("dshgw-sidebar-collapsed", script)
+        self.assertIn("aria-label", script)
+        self.assertIn("settingsLabel ? settingsLabel.className : ''", script)
         self.assertIn("MutationObserver", script)
         for action_id in (
             "dshgw-upload-button",

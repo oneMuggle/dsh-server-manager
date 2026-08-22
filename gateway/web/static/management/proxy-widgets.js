@@ -20,6 +20,10 @@
     }
     mountedArea = settingsArea;
     settingsArea.classList.add('dshgw-has-sidebar-actions');
+    settingsArea.classList.toggle(
+      'dshgw-sidebar-collapsed',
+      settingsButton.getBoundingClientRect().width <= 48,
+    );
 
     let actions = document.getElementById('dshgw-sidebar-actions');
     if (!actions) {
@@ -38,8 +42,11 @@
       knownActions.set(id, action);
       action.className = `${settingsButton.className} dshgw-sidebar-action`.trim();
       const label = action.querySelector('[data-dshgw-label]');
-      if (label && settingsLabel) {
-        label.className = `${settingsLabel.className} dshgw-sidebar-label`.trim();
+      if (label) {
+        label.className = `${settingsLabel ? settingsLabel.className : ''} dshgw-sidebar-label`.trim();
+        const accessibleName = label.textContent.trim();
+        action.setAttribute('aria-label', accessibleName);
+        action.setAttribute('title', accessibleName);
       }
       if (action.parentElement !== actions) actions.appendChild(action);
     }

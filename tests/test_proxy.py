@@ -34,8 +34,8 @@ from gateway.web.pages import admin_page, auth_page
 class ProxyTransformTests(unittest.TestCase):
     def test_injected_controls_use_local_assets_without_inline_code(self) -> None:
         controls = ADMIN_WIDGET + LOGOUT_WIDGET
-        self.assertIn(b"/gateway-assets/proxy-widgets.css?v=2", controls)
-        self.assertIn(b"/gateway-assets/proxy-widgets.js?v=2", controls)
+        self.assertIn(b"/gateway-assets/proxy-widgets.css?v=4", controls)
+        self.assertIn(b"/gateway-assets/proxy-widgets.js?v=4", controls)
         self.assertNotIn(b"<style>", controls)
         self.assertNotIn(b"fetch(", controls)
 
