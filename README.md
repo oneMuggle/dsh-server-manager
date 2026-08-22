@@ -173,7 +173,7 @@ LOGIN_TICKET_TTL=60
 }
 ```
 
-`displayName`、`apiKey`、模型的 `name`、`contextWindow` 和 `maxTokens` 可省略；至少需要一个模型。`api` 仅接受当前 Harness 源码公开给自定义提供方的 `openai-completions`、`openai-responses` 和 `anthropic-messages`。接口只执行创建操作，提供方 ID 已存在时返回 409，不会覆盖用户现有配置。
+`displayName`、模型的 `name`、`contextWindow` 和 `maxTokens` 可省略。`models` 整个字段也可省略；此时必须传入 `apiKey`，网关会请求 `<baseURL>/models` 自动发现最多 100 个模型。显式传入 `models` 时 `apiKey` 仍可省略。`api` 仅接受当前 Harness 源码公开给自定义提供方的 `openai-completions`、`openai-responses` 和 `anthropic-messages`。接口只执行创建操作，提供方 ID 已存在时返回 409，不会覆盖用户现有配置。
 
 配置通过目标用户 Harness 自身的设置 RPC 写入。`apiKey` 不会进入网关注册表、响应或设置文件，而是单独写入该用户的 Harness 凭据存储；不需要密钥的提供方可以省略此字段。若提供方配置已写入、但凭据存储随后失败，接口返回 502，并在错误详情中明确标记 `providerCreated: true`，避免调用方误以为整个操作都已回滚。
 

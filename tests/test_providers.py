@@ -63,6 +63,17 @@ class ProviderRequestTests(unittest.TestCase):
         self.assertNotIn("displayName", request.provider_profile())
         self.assertNotIn("apiKeyEnv", request.provider_profile())
 
+    def test_models_can_be_omitted_for_automatic_discovery(self) -> None:
+        request = CreateCustomProvider.model_validate(
+            {
+                "providerId": "my-gateway",
+                "baseURL": "https://gateway.example/v1",
+                "api": "openai-completions",
+                "apiKey": "sk-example",
+            }
+        )
+        self.assertEqual(request.models, [])
+
     def test_rejects_invalid_provider_protocol_and_duplicate_models(self) -> None:
         for overrides in (
             {"providerId": "Bad_ID"},
@@ -206,6 +217,57 @@ class ProviderServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result.credential_stored)
         self.assertEqual(rpc.await_args_list[3].args[2], "settings.mutate")
         self.assertEqual(rpc.await_args_list[4].args[2], "credentials.set")
+
+    async def test_discovers_models_before_writing_provider_settings(self) -> None:
+        provider = self.provider().model_copy(update={"models": []})
+        responses = [
+            self.catalog(),
+            self.settings(),
+            {"credentials": {"MY_GATEWAY_API_KEY": {"writable": True}}},
+            {"saved": True},
+            {"saved": True},
+        ]
+        with (
+            patch(
+                "gateway.services.providers.fetch_provider_models",
+                new=AsyncMock(return_value=["model-b", "model-a"]),
+            ) as discover,
+            patch(
+                "gateway.services.providers.call_harness_rpc",
+                new=AsyncMock(side_effect=responses),
+            ) as rpc,
+        ):
+            await create_provider(
+                self.database,
+                self.session,
+                "alice",
+                provider,
+            )
+
+        discover.assert_awaited_once_with(
+            self.session,
+            "https://gateway.example/v1",
+            "sk-example",
+        )
+        profile = rpc.await_args_list[3].args[3]["ops"][0]["value"]
+        self.assertEqual(
+            profile["models"],
+            [
+                {"id": "model-b", "name": "model-b"},
+                {"id": "model-a", "name": "model-a"},
+            ],
+        )
+
+    async def test_model_discovery_requires_an_api_key(self) -> None:
+        provider = self.provider().model_copy(update={"models": [], "api_key": None})
+        with self.assertRaises(ProviderOperationError) as caught:
+            await create_provider(
+                self.database,
+                self.session,
+                "alice",
+                provider,
+            )
+        self.assertEqual(caught.exception.code, "invalid")
 
     async def test_rejects_duplicate_provider(self) -> None:
         with patch(

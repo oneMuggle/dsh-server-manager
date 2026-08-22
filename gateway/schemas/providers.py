@@ -68,7 +68,14 @@ class CreateCustomProvider(BaseModel):
         max_length=16384,
         description="可选；只写入目标用户的 Harness 凭据存储，不进入设置文件",
     )
-    models: list[CustomProviderModel] = Field(min_length=1, max_length=256)
+    models: list[CustomProviderModel] = Field(
+        default_factory=list,
+        max_length=256,
+        description=(
+            "可选；省略或传空数组时，使用 apiKey 请求 "
+            "<baseURL>/models 自动发现"
+        ),
+    )
 
     @field_validator("display_name")
     @classmethod

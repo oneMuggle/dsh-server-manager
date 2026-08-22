@@ -7,9 +7,6 @@ import time
 from dataclasses import dataclass
 from urllib.parse import urljoin, urlsplit
 
-import aiohttp
-
-
 LOGIN_TICKET_MAX = 10_000
 
 
@@ -54,40 +51,6 @@ class CompatibleProvider:
             "api": self.api,
             "apiKeyEnv": self.credential_ref(),
         }
-
-
-async def fetch_provider_models(
-    session: aiohttp.ClientSession,
-    base_url: str,
-    api_key: str,
-) -> list[str]:
-    url = f"{base_url.rstrip('/')}/models"
-    timeout = aiohttp.ClientTimeout(total=15)
-    async with session.get(
-        url,
-        headers={"Authorization": f"Bearer {api_key}", "Accept": "application/json"},
-        timeout=timeout,
-    ) as response:
-        if response.status < 200 or response.status >= 300:
-            reason = f" {response.reason}" if response.reason else ""
-            raise RuntimeError(f"HTTP {response.status}{reason}")
-        try:
-            payload = await response.json()
-        except (aiohttp.ContentTypeError, ValueError) as error:
-            raise RuntimeError("provider returned invalid JSON") from error
-    rows = payload.get("data") if isinstance(payload, dict) else None
-    if not isinstance(rows, list):
-        raise RuntimeError("provider response has no data array")
-    models = [
-        str(row["id"]).strip()
-        for row in rows
-        if isinstance(row, dict)
-        and isinstance(row.get("id"), str)
-        and str(row["id"]).strip()
-    ]
-    if not models:
-        raise RuntimeError("provider returned no models")
-    return models[:100]
 
 
 @dataclass(frozen=True, slots=True)

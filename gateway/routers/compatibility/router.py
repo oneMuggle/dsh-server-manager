@@ -24,10 +24,13 @@ from ...services.auth import make_session_token, set_session
 from ...services.compatibility import (
     CompatibleProvider,
     LoginTicketStore,
-    fetch_provider_models,
     safe_return_to,
 )
-from ...services.providers import ProviderOperationError, create_provider
+from ...services.providers import (
+    ProviderOperationError,
+    create_provider,
+    fetch_provider_models,
+)
 from ...services.supervisor import SupervisorError, create_user
 
 

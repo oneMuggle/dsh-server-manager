@@ -21,6 +21,8 @@ STATUS_BY_CODE = {
     "business": 422,
     "transport": 503,
     "credential_partial": 502,
+    "invalid": 422,
+    "discovery": 502,
 }
 
 
@@ -54,6 +56,7 @@ def _http_error(error: ProviderOperationError) -> HTTPException:
     description=(
         "字段与 DSH 的“设置 → 模型 → 自定义提供方”一致。提供方配置通过目标用户 "
         "Harness 的 settings.mutate 写入；可选 API Key 通过 credentials.set 单独保存。"
+        "未传 models 时，网关使用 apiKey 请求 <baseURL>/models 自动发现。"
     ),
 )
 async def create_custom_provider(

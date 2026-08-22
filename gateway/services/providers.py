@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -10,6 +11,8 @@ from common.storage.users import RegistryError, get_user
 
 from ..schemas.providers import (
     PROVIDER_NAMESPACE,
+    CreateCustomProvider,
+    CustomProviderModel,
     CustomProviderCreated,
 )
 from .harness import (
@@ -39,6 +42,40 @@ class ProviderDefinition(Protocol):
     def credential_ref(self) -> str: ...
 
     def provider_profile(self) -> dict: ...
+
+
+async def fetch_provider_models(
+    session: aiohttp.ClientSession,
+    base_url: str,
+    api_key: str,
+) -> list[str]:
+    url = f"{base_url.rstrip('/')}/models"
+    timeout = aiohttp.ClientTimeout(total=15)
+    async with session.get(
+        url,
+        headers={"Authorization": f"Bearer {api_key}", "Accept": "application/json"},
+        timeout=timeout,
+    ) as response:
+        if response.status < 200 or response.status >= 300:
+            reason = f" {response.reason}" if response.reason else ""
+            raise RuntimeError(f"HTTP {response.status}{reason}")
+        try:
+            payload = await response.json()
+        except (aiohttp.ContentTypeError, ValueError) as error:
+            raise RuntimeError("provider returned invalid JSON") from error
+    rows = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(rows, list):
+        raise RuntimeError("provider response has no data array")
+    models = [
+        str(row["id"]).strip()
+        for row in rows
+        if isinstance(row, dict)
+        and isinstance(row.get("id"), str)
+        and str(row["id"]).strip()
+    ]
+    if not models:
+        raise RuntimeError("provider returned no models")
+    return models[:100]
 
 
 def _rpc_error(error: HarnessRpcError, operation: str) -> ProviderOperationError:
@@ -74,6 +111,35 @@ async def create_provider(
     except (KeyError, TypeError, ValueError) as error:
         raise ProviderOperationError("invalid_target", "目标用户服务配置无效") from error
 
+    effective_provider: ProviderDefinition = provider
+    if isinstance(provider, CreateCustomProvider) and not provider.models:
+        if provider.api_key is None:
+            raise ProviderOperationError(
+                "invalid",
+                "未传入 models 时必须提供 apiKey 以自动发现模型",
+            )
+        try:
+            model_ids = await fetch_provider_models(
+                session,
+                provider.base_url,
+                provider.api_key,
+            )
+            discovered_models = [
+                CustomProviderModel(id=model_id, name=model_id)
+                for model_id in model_ids
+            ]
+        except (
+            aiohttp.ClientError,
+            asyncio.TimeoutError,
+            RuntimeError,
+            ValueError,
+        ) as error:
+            raise ProviderOperationError(
+                "discovery",
+                f"自动发现模型失败：{error}",
+            ) from error
+        effective_provider = provider.model_copy(update={"models": discovered_models})
+
     try:
         providers_value = await call_harness_rpc(session, port, "llm.providers", {})
         settings_value = await call_harness_rpc(session, port, "settings.describe", {})
@@ -89,7 +155,7 @@ async def create_provider(
         for row in providers_value["providers"]
         if isinstance(row, dict) and isinstance(row.get("provider"), str)
     }
-    if provider.provider_id in taken and not replace:
+    if effective_provider.provider_id in taken and not replace:
         raise ProviderOperationError("conflict", "该提供方 ID 已存在")
 
     if not isinstance(settings_value, dict) or not isinstance(
@@ -111,7 +177,11 @@ async def create_provider(
             "conflict", "目标用户未加载自定义提供方设置模块"
         )
 
-    credential_ref = provider.credential_ref() if provider.api_key is not None else None
+    credential_ref = (
+        effective_provider.credential_ref()
+        if effective_provider.api_key is not None
+        else None
+    )
     if credential_ref is not None:
         try:
             credential_value = await call_harness_rpc(
@@ -145,8 +215,8 @@ async def create_provider(
                 "ops": [
                     {
                         "op": "set",
-                        "path": ["providers", provider.provider_id],
-                        "value": provider.provider_profile(),
+                        "path": ["providers", effective_provider.provider_id],
+                        "value": effective_provider.provider_profile(),
                     }
                 ],
                 "expectedRevision": namespace["revision"],
@@ -155,13 +225,13 @@ async def create_provider(
     except HarnessRpcError as error:
         raise _rpc_error(error, "创建目标用户提供方") from error
 
-    if credential_ref is not None and provider.api_key is not None:
+    if credential_ref is not None and effective_provider.api_key is not None:
         try:
             await call_harness_rpc(
                 session,
                 port,
                 "credentials.set",
-                {"ref": credential_ref, "value": provider.api_key},
+                {"ref": credential_ref, "value": effective_provider.api_key},
             )
         except HarnessRpcError as error:
             upstream_code = error.code if isinstance(error, HarnessRpcBusinessError) else None
@@ -175,7 +245,7 @@ async def create_provider(
 
     return CustomProviderCreated(
         username=username,
-        providerId=provider.provider_id,
+        providerId=effective_provider.provider_id,
         credentialRef=credential_ref,
         credentialStored=credential_ref is not None,
     )

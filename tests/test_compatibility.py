@@ -16,9 +16,9 @@ from common.security import hash_password
 from common.storage.users import add_user, initialize_registry
 from gateway.services.compatibility import (
     LoginTicketStore,
-    fetch_provider_models,
     safe_return_to,
 )
+from gateway.services.providers import fetch_provider_models
 
 
 compatibility = importlib.import_module("gateway.routers.compatibility.router")
