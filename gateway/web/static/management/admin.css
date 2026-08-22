@@ -7,7 +7,13 @@
     nav { display: flex; gap: 10px; }
     a, button { border: 1px solid #465066; border-radius: 8px; padding: 10px 14px; color: #dce4ff; background: #181d27; font: inherit; text-decoration: none; cursor: pointer; }
     button.primary { border-color: #315efb; background: #315efb; color: white; }
-    .panel { overflow: hidden; border: 1px solid #303746; border-radius: 14px; background: #181d27; }
+    h2 { margin: 0 0 6px; font-size: 18px; }
+    p { margin: 0; color: #aeb9d2; }
+    .panel { overflow: hidden; margin-bottom: 20px; border: 1px solid #303746; border-radius: 14px; background: #181d27; }
+    .create-panel { display: flex; align-items: end; justify-content: space-between; gap: 24px; padding: 18px; }
+    form { display: flex; align-items: end; gap: 12px; }
+    label { display: grid; gap: 6px; color: #aeb9d2; font-size: 13px; }
+    input { min-width: 190px; border: 1px solid #465066; border-radius: 8px; padding: 10px 12px; color: #f4f6fb; background: #10131a; font: inherit; }
     table { width: 100%; border-collapse: collapse; }
     th, td { padding: 14px 16px; border-bottom: 1px solid #303746; text-align: left; }
     th { color: #aeb9d2; font-size: 13px; }
@@ -16,10 +22,21 @@
     .role { background: #263d80; color: #dce5ff; }
     .status { background: #174c37; color: #c6f7e2; }
     .status.disabled { background: #5a2929; color: #ffd2d2; }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    button.small { padding: 7px 10px; font-size: 13px; }
+    button.danger { border-color: #844343; color: #ffd2d2; }
+    button:disabled { cursor: wait; opacity: .6; }
+    dialog { width: min(460px, calc(100vw - 32px)); border: 1px solid #465066; border-radius: 14px; padding: 0; color: #f4f6fb; background: #181d27; }
+    dialog::backdrop { background: rgb(0 0 0 / 65%); }
+    dialog form { display: grid; gap: 18px; padding: 22px; }
+    dialog input { width: 100%; }
+    .dialog-actions { display: flex; justify-content: flex-end; gap: 10px; }
     #message { min-height: 24px; margin: 12px 2px; color: #b9c8f6; }
     @media (max-width: 680px) {
       header { align-items: flex-start; flex-direction: column; }
       nav { width: 100%; flex-wrap: wrap; }
+      .create-panel, form { align-items: stretch; flex-direction: column; }
+      input { width: 100%; }
       th:nth-child(4), td:nth-child(4) { display: none; }
       th, td { padding: 12px 10px; }
     }

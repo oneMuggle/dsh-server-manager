@@ -83,15 +83,19 @@ class ManagementWebAssetTests(unittest.TestCase):
         self.assertFalse((PROJECT_ROOT / "gateway" / "static").exists())
 
     def test_management_pages_are_loaded_from_templates(self) -> None:
+        login_template = (TEMPLATE_ROOT / "login.html").read_text()
         pages = {
-            "login.html": auth_page("login"),
+            "login.html": auth_page("login", registration_enabled=False),
             "register.html": auth_page("register"),
             "admin.html": admin_page(),
             "plugins.html": plugin_admin_page(),
         }
         for name, rendered in pages.items():
             with self.subTest(name=name):
-                self.assertEqual(rendered, (TEMPLATE_ROOT / name).read_text())
+                expected = (TEMPLATE_ROOT / name).read_text()
+                if name == "login.html":
+                    expected = login_template.replace("<!-- REGISTRATION_LINK -->", "")
+                self.assertEqual(rendered, expected)
 
     def test_templates_reference_local_styles_and_scripts(self) -> None:
         expected = {

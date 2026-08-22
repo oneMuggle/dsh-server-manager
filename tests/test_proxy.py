@@ -178,6 +178,18 @@ class ManagementPageTests(unittest.TestCase):
         self.assertIn("退出登录", page)
         self.assertIn("/api/gateway/v1/auth/logout", script)
 
+    def test_management_page_exposes_create_reset_and_status_controls(self) -> None:
+        page = admin_page()
+        script = (MANAGEMENT_STATIC_ROOT / "admin.js").read_text()
+        self.assertIn('id="create-user-form"', page)
+        self.assertIn('id="reset-dialog"', page)
+        self.assertIn("创建用户", page)
+        self.assertIn("重置密码", page)
+        self.assertIn("method: 'PATCH'", script)
+        self.assertIn("disabled: nextDisabled", script)
+        self.assertNotIn("method: 'DELETE'", script)
+        self.assertNotIn("innerHTML", script)
+
     def test_swagger_and_openapi_are_enabled(self) -> None:
         paths = {getattr(route, "path", "") for route in app.routes}
         self.assertIn("/docs", paths)

@@ -4,18 +4,37 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>管理后台 · DeepSeek Harness</title>
-  <link rel="stylesheet" href="/gateway-assets/admin.css?v=1">
+  <link rel="stylesheet" href="/gateway-assets/admin.css?v=2">
 </head>
 <body><main>
   <header>
     <div><h1>用户管理</h1><div id="message">正在加载用户列表…</div></div>
     <nav><a href="/admin/plugins">插件管理</a><a href="/">返回 DSH</a><a href="/docs">Swagger</a><button id="refresh" class="primary" type="button">刷新</button><button id="logout" type="button">退出登录</button></nav>
   </header>
+  <section class="panel create-panel">
+    <div>
+      <h2>创建用户</h2>
+      <p>新用户创建后立即启用，用户名创建后不可修改。</p>
+    </div>
+    <form id="create-user-form">
+      <label>用户名<input name="username" autocomplete="off" required minlength="3" maxlength="24" pattern="[a-z][a-z0-9_-]{2,23}"></label>
+      <label>初始密码<input name="password" type="password" autocomplete="new-password" required minlength="8" maxlength="256"></label>
+      <button class="primary" type="submit">创建用户</button>
+    </form>
+  </section>
   <section class="panel">
     <table>
-      <thead><tr><th>用户名</th><th>角色</th><th>状态</th><th>注册时间</th></tr></thead>
+      <thead><tr><th>用户名</th><th>角色</th><th>状态</th><th>注册时间</th><th>操作</th></tr></thead>
       <tbody id="users"></tbody>
     </table>
   </section>
+  <dialog id="reset-dialog">
+    <form id="reset-password-form" method="dialog">
+      <h2>重置密码</h2>
+      <p>正在为 <strong id="reset-username"></strong> 设置新密码。保存后，该用户现有会话会立即失效。</p>
+      <label>新密码<input name="password" type="password" autocomplete="new-password" required minlength="8" maxlength="256"></label>
+      <div class="dialog-actions"><button id="cancel-reset" type="button">取消</button><button class="primary" type="submit">重置密码</button></div>
+    </form>
+  </dialog>
 </main>
-<script src="/gateway-assets/admin.js?v=1"></script></body></html>
+<script src="/gateway-assets/admin.js?v=2"></script></body></html>
