@@ -34,7 +34,7 @@ from ...services.providers import (
 from ...services.supervisor import SupervisorError, create_user
 
 
-router = APIRouter(tags=["DSH compatibility"])
+router = APIRouter(tags=["旧服务兼容接口"])
 
 USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 PROVIDER_NAME_PATTERN = USERNAME_PATTERN
