@@ -20,6 +20,7 @@ from common.contracts.control import (
     InstallUploadRequest,
     ListUploadDirectoriesRequest,
     UpdateUserRequest,
+    UserMetricsRequest,
     error_response,
     parse_control_request,
     success_response,
@@ -74,6 +75,8 @@ class ControlServer:
                             password=request.password,
                             disabled=request.disabled,
                         )
+                    elif isinstance(request, UserMetricsRequest):
+                        result = await self.owner.user_metrics()
                     elif isinstance(request, InstallUploadRequest):
                         result = await self.owner.install_upload(
                             request.username,

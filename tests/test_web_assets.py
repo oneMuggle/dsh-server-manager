@@ -138,6 +138,16 @@ class ManagementWebAssetTests(unittest.TestCase):
                     self.assertIn(f'/gateway-assets/{asset}', html)
                     self.assertTrue((MANAGEMENT_STATIC_ROOT / asset).is_file())
 
+    def test_user_management_displays_port_and_resident_memory(self) -> None:
+        html = (TEMPLATE_ROOT / "admin.html").read_text()
+        script = (MANAGEMENT_STATIC_ROOT / "admin.js").read_text()
+
+        self.assertIn("<th class=\"hide-small\">端口</th>", html)
+        self.assertIn("<th>内存</th>", html)
+        self.assertIn("user.port", script)
+        self.assertIn("user.memory_bytes", script)
+        self.assertIn("未运行", script)
+
     def test_official_plugins_are_collapsible_and_remember_their_state(self) -> None:
         html = (TEMPLATE_ROOT / "plugins.html").read_text()
         script = (MANAGEMENT_STATIC_ROOT / "plugins.js").read_text()

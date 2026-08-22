@@ -35,5 +35,11 @@ class RegisteredUser(BaseModel):
     created_at: str
 
 
+class RegisteredUserRuntime(RegisteredUser):
+    port: int = Field(ge=1, le=65535, description="租户在容器内监听的固定端口")
+    memory_bytes: int = Field(ge=0, description="租户 Linux 用户全部进程的 RSS 总字节数")
+    running: bool = Field(description="租户服务进程当前是否正在运行")
+
+
 class RegisteredUsers(BaseModel):
-    users: list[RegisteredUser]
+    users: list[RegisteredUserRuntime]

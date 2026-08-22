@@ -71,6 +71,10 @@ async def update_user(
     return await _request(socket_path, request, timeout=30)
 
 
+async def user_metrics(socket_path: Path) -> dict[str, Any]:
+    return await _request(socket_path, {"action": "user_metrics"}, timeout=10)
+
+
 async def install_upload(
     socket_path: Path,
     username: str,

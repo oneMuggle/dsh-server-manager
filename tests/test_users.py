@@ -11,6 +11,7 @@ from gateway.routers.user.accounts import (
     create_managed_user,
     delete_managed_user,
     managed_user,
+    registered_users,
     update_managed_user,
 )
 from gateway.schemas.users import CreateManagedUser, UpdateManagedUser
@@ -43,6 +44,39 @@ class ManagedUserSchemaTests(unittest.TestCase):
 
 
 class ManagedUserApiTests(unittest.IsolatedAsyncioTestCase):
+    async def test_list_includes_runtime_port_and_memory_from_supervisor(self) -> None:
+        stored = {
+            "username": "alice",
+            "role": "user",
+            "disabled": False,
+            "created_at": "2026-08-22T00:00:00+00:00",
+        }
+        metrics = AsyncMock(
+            return_value={
+                "ok": True,
+                "metrics": {
+                    "alice": {"port": 3102, "memory_bytes": 12_582_912, "running": True}
+                },
+            }
+        )
+        with (
+            patch("gateway.routers.user.accounts.require_admin"),
+            patch("gateway.routers.user.accounts.list_users", return_value=[stored]),
+            patch("gateway.routers.user.accounts.user_metrics", metrics),
+        ):
+            result = await registered_users(_request(), None)
+
+        self.assertEqual(
+            result.users[0].model_dump(),
+            {
+                **stored,
+                "port": 3102,
+                "memory_bytes": 12_582_912,
+                "running": True,
+            },
+        )
+        metrics.assert_awaited_once()
+
     async def test_detail_returns_only_public_fields(self) -> None:
         stored = {
             "username": "alice",

@@ -38,6 +38,7 @@ from .tenants.accounts import (
     valid_password_record as _valid_password_record,
 )
 from .tenants.firewall import FirewallError, apply_firewall
+from .tenants.metrics import resident_memory_by_uid
 from .tenants.uploads import (
     install_uploaded_file as _install_uploaded_file,
     list_upload_directories as _list_upload_directories,
@@ -86,6 +87,26 @@ class Supervisor:
         task = asyncio.create_task(reconcile(), name=f"plugins-{username}")
         self.background_tasks.add(task)
         task.add_done_callback(self.background_tasks.discard)
+
+    async def user_metrics(self) -> dict[str, Any]:
+        async with self.registry_lock:
+            registry = load_user_registry(self.config)
+            users = [dict(user) for user in registry["users"].values()]
+
+        memory_by_uid = await asyncio.to_thread(
+            resident_memory_by_uid,
+            {int(user["uid"]) for user in users},
+        )
+        return {
+            "metrics": {
+                str(user["username"]): {
+                    "port": int(user["port"]),
+                    "memory_bytes": memory_by_uid.get(int(user["uid"]), 0),
+                    "running": self.tenants.is_running(str(user["username"])),
+                }
+                for user in users
+            }
+        }
 
     async def create_user(self, username: str, password: dict[str, Any]) -> dict[str, Any]:
         if not USERNAME_PATTERN.fullmatch(username):

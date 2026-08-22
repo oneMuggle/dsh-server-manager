@@ -12,11 +12,12 @@ from ...runtime import config
 from ...schemas.users import (
     CreateManagedUser,
     RegisteredUser,
+    RegisteredUserRuntime,
     RegisteredUsers,
     UpdateManagedUser,
 )
 from ...services.auth import require_admin, user_role
-from ...services.supervisor import SupervisorError, create_user, update_user
+from ...services.supervisor import SupervisorError, create_user, update_user, user_metrics
 
 
 router = APIRouter(prefix="/users")
@@ -43,7 +44,7 @@ def _raise_supervisor_error(error: SupervisorError) -> None:
 @router.get(
     "",
     response_model=RegisteredUsers,
-    summary="列出注册用户",
+    summary="列出注册用户及运行指标",
 )
 async def registered_users(request: Request, token: ApiToken) -> RegisteredUsers:
     require_admin(request, token)
@@ -51,7 +52,32 @@ async def registered_users(request: Request, token: ApiToken) -> RegisteredUsers
         stored_users = list_users(config.user_database_path)
     except RegistryError as error:
         raise HTTPException(status_code=503, detail="用户服务不可用") from error
-    users = [_public_user(user) for user in stored_users]
+    try:
+        runtime = await user_metrics(config.control_socket_path)
+    except SupervisorError as error:
+        _raise_supervisor_error(error)
+    metrics = runtime.get("metrics")
+    if not isinstance(metrics, dict):
+        raise HTTPException(status_code=503, detail="用户运行指标不可用")
+
+    users: list[RegisteredUserRuntime] = []
+    for stored_user in stored_users:
+        username = str(stored_user["username"])
+        user_metric = metrics.get(username)
+        if not isinstance(user_metric, dict):
+            raise HTTPException(status_code=503, detail="用户运行指标不可用")
+        public = _public_user(stored_user)
+        try:
+            users.append(
+                RegisteredUserRuntime(
+                    **public.model_dump(),
+                    port=int(user_metric["port"]),
+                    memory_bytes=int(user_metric["memory_bytes"]),
+                    running=user_metric["running"] is True,
+                )
+            )
+        except (KeyError, TypeError, ValueError) as error:
+            raise HTTPException(status_code=503, detail="用户运行指标不可用") from error
     users.sort(key=lambda user: (user.created_at, user.username))
     return RegisteredUsers(users=users)
 

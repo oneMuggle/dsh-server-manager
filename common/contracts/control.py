@@ -30,6 +30,10 @@ class UpdateUserRequest(_ControlRequest):
         return self
 
 
+class UserMetricsRequest(_ControlRequest):
+    action: Literal["user_metrics"]
+
+
 class InstallUploadRequest(_ControlRequest):
     action: Literal["install_upload"]
     username: str
@@ -87,6 +91,7 @@ ControlRequest = Annotated[
     Union[
         CreateUserRequest,
         UpdateUserRequest,
+        UserMetricsRequest,
         InstallUploadRequest,
         ListUploadDirectoriesRequest,
         ImportOnlinePluginRequest,
@@ -128,6 +133,7 @@ __all__ = [
     "InstallUploadRequest",
     "ListUploadDirectoriesRequest",
     "UpdateUserRequest",
+    "UserMetricsRequest",
     "error_response",
     "parse_control_request",
     "success_response",

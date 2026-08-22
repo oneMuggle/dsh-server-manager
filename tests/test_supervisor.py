@@ -13,6 +13,7 @@ from gateway.config import Config
 from supervisor.application import Supervisor
 from supervisor.config import SupervisorConfig
 from supervisor.gateway_process import gateway_command, start_gateway
+from supervisor.tenants.metrics import resident_memory_by_uid
 
 
 def _stored_user(username: str, *, role: str = "user") -> dict:
@@ -142,6 +143,7 @@ class SupervisorUserUpdateTests(unittest.IsolatedAsyncioTestCase):
         self.supervisor.tenants = SimpleNamespace(
             stop_user=AsyncMock(return_value=True),
             start=Mock(),
+            is_running=Mock(side_effect=lambda username: username == "alice"),
         )
         self.supervisor._schedule_plugin_reconcile = Mock()
 
@@ -183,6 +185,50 @@ class SupervisorUserUpdateTests(unittest.IsolatedAsyncioTestCase):
     async def test_missing_user_is_reported(self) -> None:
         with self.assertRaises(LookupError):
             await self.supervisor.update_user("missing", disabled=True)
+
+    async def test_user_metrics_include_fixed_ports_memory_and_process_state(self) -> None:
+        with patch(
+            "supervisor.application.resident_memory_by_uid",
+            return_value={20000: 1024, 20001: 4096},
+        ) as memory:
+            result = await self.supervisor.user_metrics()
+
+        memory.assert_called_once_with({20000, 20001})
+        self.assertEqual(
+            result,
+            {
+                "metrics": {
+                    "admin": {"port": 3101, "memory_bytes": 1024, "running": False},
+                    "alice": {"port": 3102, "memory_bytes": 4096, "running": True},
+                }
+            },
+        )
+
+
+class TenantMemoryMetricsTests(unittest.TestCase):
+    def test_missing_proc_root_returns_zeroes(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            missing = Path(temporary) / "missing"
+            self.assertEqual(resident_memory_by_uid({20001}, missing), {20001: 0})
+
+    def test_sums_resident_memory_for_all_processes_owned_by_each_uid(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            proc_root = Path(temporary)
+            fixtures = {
+                "101": "Name:\tnode\nUid:\t20001\t20001\t20001\t20001\nVmRSS:\t123 kB\n",
+                "102": "Name:\tworker\nUid:\t20001\t20001\t20001\t20001\nVmRSS:\t77 kB\n",
+                "103": "Name:\tother\nUid:\t29999\t29999\t29999\t29999\nVmRSS:\t999 kB\n",
+            }
+            for pid, status in fixtures.items():
+                process = proc_root / pid
+                process.mkdir()
+                (process / "status").write_text(status)
+            (proc_root / "self").mkdir()
+            (proc_root / "104").mkdir()
+
+            result = resident_memory_by_uid({20001, 20002}, proc_root)
+
+        self.assertEqual(result, {20001: 200 * 1024, 20002: 0})
 
 
 if __name__ == "__main__":

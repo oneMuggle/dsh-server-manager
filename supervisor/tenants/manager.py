@@ -36,6 +36,10 @@ class TenantManager:
         self.restart_requests: set[str] = set()
         self.stopping = False
 
+    def is_running(self, username: str) -> bool:
+        process = self.processes.get(username)
+        return process is not None and process.returncode is None
+
     def start(self, user: dict[str, Any]) -> None:
         username = str(user["username"])
         if username in self.tasks:

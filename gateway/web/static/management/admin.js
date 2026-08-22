@@ -4,7 +4,17 @@ const createForm = document.getElementById('create-user-form');
 const resetDialog = document.getElementById('reset-dialog');
 const resetForm = document.getElementById('reset-password-form');
 const resetUsername = document.getElementById('reset-username');
-function cell(row, value) { const item = document.createElement('td'); item.textContent = value; row.appendChild(item); }
+function cell(row, value, className = '') { const item = document.createElement('td'); item.textContent = value; item.className = className; row.appendChild(item); }
+function formatMemory(bytes, running) {
+  if (!running) return '未运行';
+  if (!Number.isFinite(bytes) || bytes < 0) return '—';
+  const units = ['B', 'KiB', 'MiB', 'GiB'];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) { value /= 1024; unit += 1; }
+  const precision = value >= 10 || unit === 0 ? 0 : 1;
+  return `${value.toFixed(precision)} ${units[unit]}`;
+}
 function actionButton(label, action, className = '') {
   const button = document.createElement('button');
   button.type = 'button';
@@ -51,7 +61,9 @@ async function loadUsers(successMessage = '') {
       const roleBadge = document.createElement('span'); roleBadge.className = 'role'; roleBadge.textContent = user.role === 'admin' ? '管理员' : '用户'; role.appendChild(roleBadge); row.appendChild(role);
       const state = document.createElement('td');
       const badge = document.createElement('span'); badge.className = `status${user.disabled ? ' disabled' : ''}`; badge.textContent = user.disabled ? '已停用' : '正常'; state.appendChild(badge); row.appendChild(state);
-      cell(row, user.created_at ? new Date(user.created_at).toLocaleString() : '—');
+      cell(row, String(user.port), 'hide-small');
+      cell(row, formatMemory(user.memory_bytes, user.running));
+      cell(row, user.created_at ? new Date(user.created_at).toLocaleString() : '—', 'hide-small');
       const actions = document.createElement('td'); actions.className = 'actions';
       actions.appendChild(actionButton('重置密码', () => showResetDialog(user.username)));
       if (user.role !== 'admin') actions.appendChild(actionButton(user.disabled ? '启用' : '停用', () => changeUserState(user), user.disabled ? '' : 'danger'));

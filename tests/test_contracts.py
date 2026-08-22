@@ -15,6 +15,7 @@ from common.contracts.control import (
     ControlRequestError,
     CreateUserRequest,
     UpdateUserRequest,
+    UserMetricsRequest,
     parse_control_request,
 )
 from gateway.application import app, create_app
@@ -93,6 +94,15 @@ SCHEMA_PROPERTIES = {
     "BuiltinPluginAssignment": ["action", "applyToFutureUsers", "entryId", "scope"],
     "PluginScope": ["includeDisabledUsers", "type", "usernames"],
     "RegisteredUser": ["created_at", "disabled", "role", "username"],
+    "RegisteredUserRuntime": [
+        "created_at",
+        "disabled",
+        "memory_bytes",
+        "port",
+        "role",
+        "running",
+        "username",
+    ],
     "RegisteredUsers": ["users"],
     "UpdateManagedUser": ["disabled", "password"],
 }
@@ -356,6 +366,7 @@ class TypedControlContractTests(unittest.IsolatedAsyncioTestCase):
         fixtures = [
             ({"action": "create_user", "username": "alice", "password": {}}, CreateUserRequest),
             ({"action": "update_user", "username": "alice", "disabled": True}, UpdateUserRequest),
+            ({"action": "user_metrics"}, UserMetricsRequest),
             ({"action": "install_upload", "username": "alice", "spool_name": "a", "directory": ".", "filename": "a.txt", "size": 1}, "InstallUploadRequest"),
             ({"action": "list_upload_directories", "username": "alice", "directory": "."}, "ListUploadDirectoriesRequest"),
             ({"action": "plugin_online_import", "package_name": "pkg", "requested_version": "latest", "created_by": "admin"}, "ImportOnlinePluginRequest"),
