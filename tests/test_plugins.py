@@ -319,7 +319,7 @@ class PluginInputTests(unittest.TestCase):
 
 
 class PluginVersionDiscoveryTests(unittest.IsolatedAsyncioTestCase):
-    async def test_plugin_install_allows_only_node_pty_native_build(self) -> None:
+    async def test_plugin_install_allows_only_required_build_scripts(self) -> None:
         with tempfile.TemporaryDirectory() as temporary, patch.dict(
             os.environ,
             {"DSM_PLUGIN_NPM_REGISTRY": "", "DSM_PLUGIN_NPM_TOKEN": ""},
@@ -343,6 +343,7 @@ class PluginVersionDiscoveryTests(unittest.IsolatedAsyncioTestCase):
 
             self.assertEqual(len(captured), 1)
             self.assertIn("--allow-build=node-pty", captured[0])
+            self.assertIn("--allow-build=protobufjs", captured[0])
             self.assertIn("--registry", captured[0])
             self.assertIn("https://registry.npmjs.org/", captured[0])
             self.assertNotIn("--ignore-scripts", captured[0])
