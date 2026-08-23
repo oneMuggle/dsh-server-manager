@@ -10,6 +10,11 @@ const onlinePackage = document.getElementById('online-package');
 const discoverVersions = document.getElementById('discover-versions');
 const onlineVersion = document.getElementById('online-version');
 const importOnline = document.getElementById('import-online');
+const registryForm = document.getElementById('registry-form');
+const registryUrl = document.getElementById('registry-url');
+const registrySave = document.getElementById('registry-save');
+const registryReset = document.getElementById('registry-reset');
+const registryStatus = document.getElementById('registry-status');
 const assignmentDialog = document.getElementById('assignment-dialog');
 const assignmentForm = document.getElementById('assignment-form');
 const assignmentTitle = document.getElementById('assignment-title');
@@ -28,6 +33,12 @@ let builtinPlugins = [];
 let discoveredPackage = '';
 let pendingAction = null;
 let selectedUsers = new Set();
+
+const registrySourceLabels = {
+  configured: '后台配置',
+  environment: '环境变量启动默认值',
+  default: 'npm 系统默认值',
+};
 
 try { builtinDetails.open = localStorage.getItem(builtinCollapseKey) === 'true'; } catch (_) {}
 builtinDetails.addEventListener('toggle', () => {
@@ -241,6 +252,54 @@ function resetDiscoveredVersions() {
   importOnline.disabled = true;
 }
 
+async function loadRegistryConfiguration(successMessage = '') {
+  try {
+    const configuration = await api('/api/v1/plugins/registry');
+    registryUrl.value = configuration.registryUrl;
+    registryReset.disabled = configuration.source !== 'configured';
+    const source = registrySourceLabels[configuration.source] || configuration.source;
+    const token = configuration.tokenConfigured ? '；已配置访问令牌（不会在页面显示）' : '';
+    const prefix = successMessage ? `${successMessage}。` : '';
+    registryStatus.textContent = `${prefix}当前生效：${configuration.registryUrl}；来源：${source}；启动默认：${configuration.defaultRegistryUrl}${token}`;
+  } catch (error) {
+    registryStatus.textContent = `镜像源加载失败：${error.message}`;
+  }
+}
+
+registryForm.onsubmit = async event => {
+  event.preventDefault();
+  registrySave.disabled = true;
+  registryReset.disabled = true;
+  try {
+    await api('/api/v1/plugins/registry', {
+      method:'PUT',
+      headers:{'content-type':'application/json'},
+      body:JSON.stringify({registryUrl:registryUrl.value.trim()}),
+    });
+    resetDiscoveredVersions();
+    await loadRegistryConfiguration('镜像源已保存');
+  } catch (error) {
+    registryStatus.textContent = `镜像源保存失败：${error.message}`;
+  } finally {
+    registrySave.disabled = false;
+  }
+};
+
+registryReset.onclick = async () => {
+  registrySave.disabled = true;
+  registryReset.disabled = true;
+  try {
+    await api('/api/v1/plugins/registry', {method:'DELETE'});
+    resetDiscoveredVersions();
+    await loadRegistryConfiguration('已恢复启动默认镜像源');
+  } catch (error) {
+    registryStatus.textContent = `恢复失败：${error.message}`;
+    registryReset.disabled = false;
+  } finally {
+    registrySave.disabled = false;
+  }
+};
+
 onlinePackage.oninput = () => { if (onlinePackage.value.trim() !== discoveredPackage) resetDiscoveredVersions(); };
 onlineForm.onsubmit = async event => {
   event.preventDefault();
@@ -302,5 +361,6 @@ document.getElementById('logout').onclick = async event => {
   } catch (error) { event.currentTarget.disabled = false; message.textContent = `退出失败：${error.message || error}`; }
 };
 
+loadRegistryConfiguration();
 load();
 setInterval(load, 10000);

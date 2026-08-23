@@ -138,6 +138,21 @@ async def discover_plugin_versions(
     )
 
 
+async def plugin_registry_configuration(socket_path: Path) -> dict[str, Any]:
+    return await _request(socket_path, {"action": "plugin_registry_get"}, timeout=10)
+
+
+async def update_plugin_registry(
+    socket_path: Path,
+    registry_url: str | None,
+) -> dict[str, Any]:
+    return await _request(
+        socket_path,
+        {"action": "plugin_registry_update", "registry_url": registry_url},
+        timeout=10,
+    )
+
+
 async def import_offline_plugin(
     socket_path: Path,
     spool_name: str,

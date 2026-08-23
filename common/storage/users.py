@@ -7,9 +7,10 @@ from typing import Any
 
 from .database import read_connection, write_connection
 from .plugin_catalog import create_plugin_schema
+from .settings import create_settings_schema
 
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 class RegistryError(RuntimeError):
@@ -36,6 +37,7 @@ def _create_schema(connection: sqlite3.Connection) -> None:
         "CREATE INDEX IF NOT EXISTS users_created_at_idx ON users(created_at, username)"
     )
     create_plugin_schema(connection)
+    create_settings_schema(connection)
     connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
 
@@ -85,7 +87,7 @@ def initialize_registry(path: Path) -> None:
     try:
         with write_connection(path) as connection:
             version = int(connection.execute("PRAGMA user_version").fetchone()[0])
-            if version not in {0, 1, 2, SCHEMA_VERSION}:
+            if version not in {0, 1, 2, 3, SCHEMA_VERSION}:
                 raise RegistryError(f"unsupported user database version: {version}")
             _create_schema(connection)
     except sqlite3.DatabaseError as error:

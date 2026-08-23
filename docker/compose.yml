@@ -7,7 +7,7 @@ services:
       context: ..
       dockerfile: docker/Dockerfile
     ports:
-      - "3081:8080"
+      - "3082:8080"
     cap_add:
       - NET_ADMIN
     security_opt:

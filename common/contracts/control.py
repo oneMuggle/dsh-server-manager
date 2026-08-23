@@ -61,6 +61,15 @@ class DiscoverPluginVersionsRequest(_ControlRequest):
     package_name: str
 
 
+class GetPluginRegistryRequest(_ControlRequest):
+    action: Literal["plugin_registry_get"]
+
+
+class UpdatePluginRegistryRequest(_ControlRequest):
+    action: Literal["plugin_registry_update"]
+    registry_url: str | None = None
+
+
 class ImportOfflinePluginRequest(_ControlRequest):
     action: Literal["plugin_offline_import"]
     spool_name: str
@@ -96,6 +105,8 @@ ControlRequest = Annotated[
         ListUploadDirectoriesRequest,
         ImportOnlinePluginRequest,
         DiscoverPluginVersionsRequest,
+        GetPluginRegistryRequest,
+        UpdatePluginRegistryRequest,
         ImportOfflinePluginRequest,
         AssignPluginRequest,
         AssignBuiltinPluginRequest,
@@ -128,11 +139,13 @@ __all__ = [
     "ControlRequestError",
     "CreateUserRequest",
     "DiscoverPluginVersionsRequest",
+    "GetPluginRegistryRequest",
     "ImportOfflinePluginRequest",
     "ImportOnlinePluginRequest",
     "InstallUploadRequest",
     "ListUploadDirectoriesRequest",
     "UpdateUserRequest",
+    "UpdatePluginRegistryRequest",
     "UserMetricsRequest",
     "error_response",
     "parse_control_request",

@@ -23,6 +23,8 @@
     details[open] .collapse-label::after { content: '收起'; }
     .section-count { color: #8da0c9; font-size: 13px; font-weight: 500; }
     form { display: flex; gap: 9px; flex-wrap: wrap; } form input[type=text] { min-width: 230px; }
+    .registry-form input { flex: 1 1 420px; min-width: min(420px, 100%); }
+    #registry-status { margin-bottom: 0; overflow-wrap: anywhere; }
     .grow { flex: 1; } .muted { color: #aeb9d2; font-size: 13px; }
     #message { min-height: 22px; color: #b9c8f6; }
     table { width: 100%; border-collapse: collapse; margin-top: 10px; }

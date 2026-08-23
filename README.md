@@ -8,7 +8,7 @@ DSH Server Manager（DSM）使用一个 Docker 容器从官方 DeepSeek Harness 
 ## 架构
 
 ```text
-浏览器 -> http://<局域网 IP>:3081 -> FastAPI :8080 -> 用户专属 DSH 127.0.0.1:31xx
+浏览器 -> http://<局域网 IP>:3082 -> FastAPI :8080 -> 用户专属 DSH 127.0.0.1:31xx
 ```
 
 DSH 保持官方默认回环监听。FastAPI 接收请求，aiohttp 负责 HTTP/WebSocket 转发，并把 Host 改写为对应的回环地址。不修改 Harness 源码，也不使用 `--host` 或 `--trusted-host`。
@@ -61,7 +61,7 @@ hostname -I
 在同一局域网设备的浏览器打开：
 
 ```text
-http://<服务器局域网 IP>:3081/
+http://<服务器局域网 IP>:3082/
 ```
 
 ### GitHub 镜像
@@ -108,7 +108,7 @@ Compose 从仓库根目录的 `.env` 读取配置；可从 `.env.example` 复制
 | `DSM_ADMIN_PASSWORD` | 无 | 首次启动时创建固定管理员 `admin`，必须为 8–256 个字符；管理员已存在时不会自动改密 |
 | `DSM_REGISTRATION_ENABLED` | `false` | 是否开放注册页面和注册 API，只接受 `true` 或 `false` |
 | `DSM_COOKIE_SECURE` | `false` | 使用 HTTPS 时设为 `true`，使会话 Cookie 仅通过安全连接发送 |
-| `DSM_PLUGIN_NPM_REGISTRY` | pnpm 默认 registry | 共享插件联网导入所使用的 HTTP(S) registry |
+| `DSM_PLUGIN_NPM_REGISTRY` | npm 官方 registry | 后台尚未保存配置时使用的启动默认 Registry |
 | `DSM_PLUGIN_NPM_TOKEN` | 无 | 私有 registry 的只读 Token，只在插件安装临时目录中使用 |
 | `DSM_LOG_LEVEL` | `INFO` | Supervisor 日志级别 |
 
@@ -124,7 +124,7 @@ Compose 从仓库根目录的 `.env` 读取配置；可从 `.env.example` 复制
 curl -sS \
   -H 'Content-Type: application/json' \
   -d '{"username":"alice","password":"change-me-123"}' \
-  http://127.0.0.1:3081/api/v1/auth/registrations
+  http://127.0.0.1:3082/api/v1/auth/registrations
 ```
 
 已有用户推荐通过 OAuth2 Password 接口登录并获取 Bearer Token：
@@ -134,7 +134,7 @@ curl -sS -X POST \
   -H 'Content-Type: application/x-www-form-urlencoded' \
   --data-urlencode 'username=alice' \
   --data-urlencode 'password=change-me-123' \
-  http://127.0.0.1:3081/api/v1/auth/token
+  http://127.0.0.1:3082/api/v1/auth/token
 ```
 
 响应格式：
@@ -153,7 +153,7 @@ curl -sS -X POST \
 TOKEN='<signed-token>'
 curl \
   -H "Authorization: Bearer ${TOKEN}" \
-  http://127.0.0.1:3081/api/v1/auth/sessions/current
+  http://127.0.0.1:3082/api/v1/auth/sessions/current
 ```
 
 用户名长度为 3–24，只能使用小写字母、数字、下划线和连字符，且必须以字母开头；密码至少 8 个字符。
@@ -226,6 +226,7 @@ Swagger UI 位于 `/docs`，OpenAPI 文档位于 `/openapi.json`。Swagger UI �
 
 管理员访问 `/admin/plugins` 可以管理共享插件：
 
+- 页面顶部显示当前生效的 npm Registry 及其来源；管理员可以直接保存新的 HTTP(S) 镜像源，配置持久化在 SQLite 中并立即用于版本发现和联网导入，无需重启。点击“恢复启动默认”会删除后台覆盖值，重新使用 `DSM_PLUGIN_NPM_REGISTRY`，未设置环境变量时回到 `https://registry.npmjs.org/`；
 - 联网环境只需输入 npm 包名（例如 `@scope/plugin`），系统会从 npm Registry 自动发现全部版本并默认选中 `latest`，管理员确认具体版本后再导入；
 - 离线环境上传 npm `.tgz` 包；离线包必须包含运行所需内容，且依赖已经内置或存在于离线包中；
 - 点击安装、卸载、启用或停用后，在弹窗中搜索并选择一个或多个用户批量执行；
@@ -248,7 +249,7 @@ Swagger UI 位于 `/docs`，OpenAPI 文档位于 `/openapi.json`。Swagger UI �
 
 离线导入接口为 `POST /api/v1/plugins/imports/archive`，请求体直接使用 `application/octet-stream` 传输 `.tgz`。批量策略接口为 `POST /api/v1/plugins/jobs`，导入和策略操作均异步返回任务 ID，可通过 `GET /api/v1/plugins/jobs/{job_id}` 查询结果。所有接口仅允许管理员 Cookie 或 Bearer Token 调用。
 
-默认使用 pnpm/npm 的公共 registry。私有源可以在 `.env` 中设置 `DSM_PLUGIN_NPM_REGISTRY` 和只读的 `DSM_PLUGIN_NPM_TOKEN`。安装过程使用独立低权限账号，只允许 `node-pty` 执行原生构建脚本，其他依赖的 lifecycle scripts 不会执行；发布后保留必要的可执行位，并把共享版本改为 root 所有的只读目录。插件自身仍会进入被分配用户的 DSH 进程执行，所以只能导入可信插件。
+环境变量 `DSM_PLUGIN_NPM_REGISTRY` 只提供启动默认值，后台保存的地址优先级更高。私有源的只读 `DSM_PLUGIN_NPM_TOKEN` 仍只允许通过环境变量注入，不写入 SQLite，也不会在页面或 API 中回显。安装过程使用独立低权限账号，只允许 `node-pty` 执行原生构建脚本，其他依赖的 lifecycle scripts 不会执行；发布后保留必要的可执行位，并把共享版本改为 root 所有的只读目录。插件自身仍会进入被分配用户的 DSH 进程执行，所以只能导入可信插件。
 
 ## 上传文件
 
@@ -264,7 +265,7 @@ docker compose -f docker/compose.yml down
 
 ## 安全限制
 
-当前版本面向可信局域网：已有账号之间相互隔离，注册接口默认关闭，但普通 HTTP 没有 TLS。不要把端口 `3081` 直接暴露到公网；公网部署前还需要 HTTPS、注册策略、CSRF/限流强化和管理接口。
+当前版本面向可信局域网：已有账号之间相互隔离，注册接口默认关闭，但普通 HTTP 没有 TLS。不要把端口 `3082` 直接暴露到公网；公网部署前还需要 HTTPS、注册策略、CSRF/限流强化和管理接口。
 
 ## 致谢
 

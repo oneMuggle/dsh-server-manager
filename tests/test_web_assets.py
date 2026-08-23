@@ -174,6 +174,17 @@ class ManagementWebAssetTests(unittest.TestCase):
         self.assertIn("dialog::backdrop", stylesheet)
         self.assertIn(".user-option", stylesheet)
 
+    def test_plugin_management_configures_the_effective_registry(self) -> None:
+        html = (TEMPLATE_ROOT / "plugins.html").read_text()
+        script = (MANAGEMENT_STATIC_ROOT / "plugins.js").read_text()
+
+        self.assertIn('id="registry-url"', html)
+        self.assertIn("恢复启动默认", html)
+        self.assertIn("/api/v1/plugins/registry", script)
+        self.assertIn("method:'PUT'", script)
+        self.assertIn("method:'DELETE'", script)
+        self.assertIn("tokenConfigured", script)
+
     def test_injected_upload_widget_is_also_packaged_as_web_assets(self) -> None:
         widget = UPLOAD_WIDGET.decode()
         self.assertEqual(widget, (TEMPLATE_ROOT / "upload-widget.html").read_text())

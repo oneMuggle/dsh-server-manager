@@ -246,6 +246,14 @@ class Supervisor:
     async def discover_plugin_versions(self, package_name: str) -> dict[str, Any]:
         return await self.plugins.discover_versions(package_name)
 
+    async def plugin_registry_configuration(self) -> dict[str, object]:
+        return self.plugins.registry_configuration()
+
+    async def update_plugin_registry(
+        self, registry_url: str | None
+    ) -> dict[str, object]:
+        return self.plugins.update_registry(registry_url)
+
     async def import_offline_plugin(
         self, spool_name: str, created_by: str
     ) -> dict[str, Any]:

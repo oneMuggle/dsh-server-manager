@@ -4,10 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>插件管理 · DeepSeek Harness</title>
-  <link rel="stylesheet" href="/gateway-assets/plugins.css?v=5">
+  <link rel="stylesheet" href="/gateway-assets/plugins.css?v=6">
 </head>
 <body><main>
   <!-- MANAGEMENT_HEADER -->
+  <section><h2>npm Registry</h2><form id="registry-form" class="registry-form"><input id="registry-url" name="registryUrl" type="url" required maxlength="2048" placeholder="https://registry.npmjs.org/" aria-label="npm Registry 地址"><button id="registry-save" class="primary" type="submit">保存镜像源</button><button id="registry-reset" type="button">恢复启动默认</button></form><p id="registry-status" class="muted">正在读取当前镜像源…</p></section>
   <section><h2>导入插件</h2><div class="row">
     <form id="online" class="grow"><input id="online-package" name="packageName" required placeholder="npm 包名，例如 @scope/plugin"><button id="discover-versions" type="submit">发现版本</button><select id="online-version" aria-label="插件版本" disabled><option>请先发现版本</option></select><button id="import-online" class="primary" type="button" disabled>导入所选版本</button></form>
     <form id="offline"><input name="file" type="file" accept=".tgz,application/gzip" required><button>离线导入</button></form>
@@ -25,4 +26,4 @@
     <div class="dialog-actions"><button id="assignment-cancel" type="button">取消</button><button id="assignment-submit" class="primary" type="submit" disabled>执行批量操作</button></div>
   </form>
 </dialog>
-<script src="/gateway-assets/plugins.js?v=5"></script></body></html>
+<script src="/gateway-assets/plugins.js?v=6"></script></body></html>

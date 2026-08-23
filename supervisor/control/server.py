@@ -15,11 +15,13 @@ from common.contracts.control import (
     AssignPluginRequest,
     CreateUserRequest,
     DiscoverPluginVersionsRequest,
+    GetPluginRegistryRequest,
     ImportOfflinePluginRequest,
     ImportOnlinePluginRequest,
     InstallUploadRequest,
     ListUploadDirectoriesRequest,
     UpdateUserRequest,
+    UpdatePluginRegistryRequest,
     UserMetricsRequest,
     error_response,
     parse_control_request,
@@ -97,6 +99,12 @@ class ControlServer:
                         )
                     elif isinstance(request, DiscoverPluginVersionsRequest):
                         result = await self.owner.discover_plugin_versions(request.package_name)
+                    elif isinstance(request, GetPluginRegistryRequest):
+                        result = await self.owner.plugin_registry_configuration()
+                    elif isinstance(request, UpdatePluginRegistryRequest):
+                        result = await self.owner.update_plugin_registry(
+                            request.registry_url
+                        )
                     elif isinstance(request, ImportOfflinePluginRequest):
                         result = await self.owner.import_offline_plugin(
                             request.spool_name, request.created_by

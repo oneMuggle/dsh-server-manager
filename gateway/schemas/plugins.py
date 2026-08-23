@@ -12,6 +12,21 @@ class OnlinePluginImport(BaseModel):
     version: str = Field(default="latest", min_length=1, max_length=64)
 
 
+class PluginRegistryConfiguration(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    registry_url: str = Field(alias="registryUrl")
+    source: Literal["configured", "environment", "default"]
+    default_registry_url: str = Field(alias="defaultRegistryUrl")
+    token_configured: bool = Field(alias="tokenConfigured")
+
+
+class UpdatePluginRegistry(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    registry_url: str = Field(alias="registryUrl", min_length=1, max_length=2048)
+
+
 class PluginScope(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

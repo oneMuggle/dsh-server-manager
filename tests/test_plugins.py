@@ -5,12 +5,19 @@ import tempfile
 import unittest
 import os
 import pwd
+from fastapi import Request
 from pydantic import ValidationError
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
+from gateway.application import app
+from gateway.routers.plugin.registry import (
+    delete_registry_configuration,
+    get_registry_configuration,
+    put_registry_configuration,
+)
 from gateway.web.pages import plugin_admin_page
-from gateway.schemas.plugins import BuiltinPluginAssignment
+from gateway.schemas.plugins import BuiltinPluginAssignment, UpdatePluginRegistry
 from gateway.web import MANAGEMENT_STATIC_ROOT
 from common.storage.assignments import (
     apply_plugin_defaults,
@@ -26,10 +33,11 @@ from common.storage.builtin_plugins import (
     set_user_builtin_plugin,
 )
 from common.storage.plugin_jobs import create_job, get_job
+from common.storage.settings import get_plugin_npm_registry
 from common.storage.users import add_user, initialize_registry, replace_registry
 from supervisor.plugins import PluginOperationError, SharedPluginManager
 from supervisor.plugins.assignments import restore_user_assignment
-from supervisor.plugins.commands import PluginCommandRunner
+from supervisor.plugins.commands import PluginCommandRunner, normalize_registry_url
 from supervisor.plugins.installer import installed_package
 from supervisor.plugins.packages import SharedPackageRepository, freeze_release
 from supervisor.plugins.profile import apply_profile
@@ -53,6 +61,18 @@ def user(username: str, uid: int, port: int) -> dict:
         "created_at": "2026-01-01T00:00:00+00:00",
         "disabled": False,
     }
+
+
+def api_request(method: str = "GET") -> Request:
+    return Request(
+        {
+            "type": "http",
+            "method": method,
+            "path": "/api/v1/plugins/registry",
+            "headers": [],
+            "app": app,
+        }
+    )
 
 
 class PluginStoreTests(unittest.TestCase):
@@ -154,6 +174,51 @@ class PluginStoreTests(unittest.TestCase):
 
 
 class PluginInputTests(unittest.TestCase):
+    def test_registry_url_requires_a_safe_http_origin(self) -> None:
+        self.assertEqual(
+            normalize_registry_url("HTTPS://registry.example.com/npm"),
+            "https://registry.example.com/npm/",
+        )
+        for value in (
+            "file:///tmp/registry",
+            "https://user:secret@registry.example.com/",
+            "https://registry.example.com/?token=secret",
+            "https://registry.example.com:invalid/",
+            "",
+        ):
+            with self.subTest(value=value), self.assertRaises(PluginOperationError):
+                normalize_registry_url(value)
+
+    def test_registry_database_override_wins_over_environment_default(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary, patch.dict(
+            os.environ,
+            {
+                "DSM_PLUGIN_NPM_REGISTRY": "https://environment.example/npm",
+                "DSM_PLUGIN_NPM_TOKEN": "",
+            },
+        ):
+            root = Path(temporary)
+            database = root / "users.db"
+            initialize_registry(database)
+            commands = PluginCommandRunner(root / "plugins", database)
+
+            initial = commands.registry_configuration()
+            self.assertEqual(initial["registryUrl"], "https://environment.example/npm/")
+            self.assertEqual(initial["source"], "environment")
+
+            configured = commands.update_registry("https://mirror.example/repository")
+            self.assertEqual(configured["registryUrl"], "https://mirror.example/repository/")
+            self.assertEqual(configured["source"], "configured")
+            self.assertEqual(
+                get_plugin_npm_registry(database),
+                "https://mirror.example/repository/",
+            )
+
+            restored = commands.update_registry(None)
+            self.assertEqual(restored["registryUrl"], "https://environment.example/npm/")
+            self.assertEqual(restored["source"], "environment")
+            self.assertIsNone(get_plugin_npm_registry(database))
+
     def test_release_freeze_preserves_executable_files(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             release = Path(temporary) / "release"
@@ -255,7 +320,10 @@ class PluginInputTests(unittest.TestCase):
 
 class PluginVersionDiscoveryTests(unittest.IsolatedAsyncioTestCase):
     async def test_plugin_install_allows_only_node_pty_native_build(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
+        with tempfile.TemporaryDirectory() as temporary, patch.dict(
+            os.environ,
+            {"DSM_PLUGIN_NPM_REGISTRY": "", "DSM_PLUGIN_NPM_TOKEN": ""},
+        ):
             root = Path(temporary)
             commands = PluginCommandRunner(root / "plugins")
             staging = root / "staging"
@@ -275,6 +343,8 @@ class PluginVersionDiscoveryTests(unittest.IsolatedAsyncioTestCase):
 
             self.assertEqual(len(captured), 1)
             self.assertIn("--allow-build=node-pty", captured[0])
+            self.assertIn("--registry", captured[0])
+            self.assertIn("https://registry.npmjs.org/", captured[0])
             self.assertNotIn("--ignore-scripts", captured[0])
 
     async def test_invalid_install_result_is_a_plugin_operation_error(self) -> None:
@@ -381,6 +451,43 @@ class PluginVersionDiscoveryTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(command[:3], ["pnpm", "view", "@scope/example-plugin"])
             self.assertIn("versions", command)
             self.assertIn("--json", command)
+
+
+class PluginRegistryApiTests(unittest.IsolatedAsyncioTestCase):
+    async def test_admin_can_read_update_and_reset_registry(self) -> None:
+        configuration = {
+            "registryUrl": "https://mirror.example/",
+            "source": "configured",
+            "defaultRegistryUrl": "https://registry.npmjs.org/",
+            "tokenConfigured": False,
+        }
+        read = AsyncMock(return_value=configuration)
+        update = AsyncMock(return_value=configuration)
+        with (
+            patch("gateway.routers.plugin.registry.require_admin"),
+            patch("gateway.routers.plugin.registry.plugin_registry_configuration", read),
+            patch("gateway.routers.plugin.registry.update_plugin_registry", update),
+        ):
+            self.assertEqual(
+                await get_registry_configuration(api_request(), None),
+                configuration,
+            )
+            self.assertEqual(
+                await put_registry_configuration(
+                    api_request("PUT"),
+                    UpdatePluginRegistry(registryUrl="https://mirror.example/"),
+                    None,
+                ),
+                configuration,
+            )
+            response = await delete_registry_configuration(
+                api_request("DELETE"), None
+            )
+
+        self.assertEqual(response.status_code, 204)
+        read.assert_awaited_once()
+        self.assertEqual(update.await_args_list[0].args[1], "https://mirror.example/")
+        self.assertIsNone(update.await_args_list[1].args[1])
 
 
 class ProfileValidationTests(unittest.TestCase):

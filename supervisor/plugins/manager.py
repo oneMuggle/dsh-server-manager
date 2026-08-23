@@ -49,7 +49,7 @@ class SharedPluginManager:
         self.harness_cli = harness_cli
         self.restart_tenant = restart_tenant
         self.root = state_root / "plugins"
-        self.commands = PluginCommandRunner(self.root)
+        self.commands = PluginCommandRunner(self.root, database_path)
         self.packages = SharedPackageRepository(
             database_path=database_path,
             state_root=state_root,
@@ -82,6 +82,12 @@ class SharedPluginManager:
 
     async def discover_versions(self, package_name: str) -> dict[str, Any]:
         return await self.packages.discover_versions(package_name)
+
+    def registry_configuration(self) -> dict[str, object]:
+        return self.commands.registry_configuration()
+
+    def update_registry(self, registry_url: str | None) -> dict[str, object]:
+        return self.commands.update_registry(registry_url)
 
     def prepare_user_profile(self, user: dict[str, Any]) -> bool:
         """Apply persisted policy before a tenant process starts."""

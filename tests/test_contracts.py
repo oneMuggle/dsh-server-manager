@@ -46,6 +46,9 @@ PUBLIC_RESPONSES = {
     ("get", "/api/v1/plugins"): ["200"],
     ("post", "/api/v1/plugins/imports/archive"): ["202"],
     ("post", "/api/v1/plugins/imports/registry"): ["202", "422"],
+    ("get", "/api/v1/plugins/registry"): ["200"],
+    ("put", "/api/v1/plugins/registry"): ["200", "422"],
+    ("delete", "/api/v1/plugins/registry"): ["204"],
     ("get", "/api/v1/plugins/registry/versions"): ["200", "422"],
     ("get", "/api/v1/users"): ["200"],
     ("post", "/api/v1/users"): ["201", "422"],
@@ -91,6 +94,13 @@ SCHEMA_PROPERTIES = {
         "scope",
         "versionId",
     ],
+    "PluginRegistryConfiguration": [
+        "defaultRegistryUrl",
+        "registryUrl",
+        "source",
+        "tokenConfigured",
+    ],
+    "UpdatePluginRegistry": ["registryUrl"],
     "BuiltinPluginAssignment": ["action", "applyToFutureUsers", "entryId", "scope"],
     "PluginScope": ["includeDisabledUsers", "type", "usernames"],
     "RegisteredUser": ["created_at", "disabled", "role", "username"],
@@ -173,6 +183,7 @@ TABLE_COLUMNS = {
     ],
     "user_builtin_plugins": ["username", "entry_id", "enabled", "updated_at"],
     "builtin_plugin_defaults": ["entry_id", "enabled", "updated_at"],
+    "system_settings": ["key", "value", "updated_at"],
 }
 
 
@@ -284,7 +295,7 @@ class SqliteContractTests(unittest.TestCase):
             database = Path(temporary) / "users.db"
             initialize_registry(database)
             with sqlite3.connect(database) as connection:
-                self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 3)
+                self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 4)
                 for table, expected in TABLE_COLUMNS.items():
                     with self.subTest(table=table):
                         columns = [
@@ -371,6 +382,8 @@ class TypedControlContractTests(unittest.IsolatedAsyncioTestCase):
             ({"action": "list_upload_directories", "username": "alice", "directory": "."}, "ListUploadDirectoriesRequest"),
             ({"action": "plugin_online_import", "package_name": "pkg", "requested_version": "latest", "created_by": "admin"}, "ImportOnlinePluginRequest"),
             ({"action": "plugin_discover_versions", "package_name": "pkg"}, "DiscoverPluginVersionsRequest"),
+            ({"action": "plugin_registry_get"}, "GetPluginRegistryRequest"),
+            ({"action": "plugin_registry_update", "registry_url": "https://registry.example/"}, "UpdatePluginRegistryRequest"),
             ({"action": "plugin_offline_import", "spool_name": "a.plugin.tgz", "created_by": "admin"}, "ImportOfflinePluginRequest"),
             ({"action": "plugin_assignment", "plugin_action": "install", "plugin_id": 1, "plugin_version_id": 2, "scope": {"type": "all"}, "enabled_after_install": True, "apply_to_future_users": False, "created_by": "admin"}, AssignPluginRequest),
             ({"action": "builtin_plugin_assignment", "plugin_action": "disable", "entry_id": "tool-web", "scope": {"type": "all"}, "apply_to_future_users": True, "created_by": "admin"}, AssignBuiltinPluginRequest),
