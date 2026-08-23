@@ -48,6 +48,9 @@ jobs:
           context: .
           file: docker/Dockerfile
           push: true
+          build-args: |
+            DSM_BUILD_DEBIAN_MIRROR=${{ vars.DSM_BUILD_DEBIAN_MIRROR }}
+            DSM_BUILD_NPM_REGISTRY=${{ vars.DSM_BUILD_NPM_REGISTRY }}
           tags: ${{ steps.image.outputs.name }}:${{ steps.image.outputs.tag }}
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}

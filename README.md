@@ -108,11 +108,15 @@ Compose 从仓库根目录的 `.env` 读取配置；可从 `.env.example` 复制
 | `DSM_ADMIN_PASSWORD` | 无 | 首次启动时创建固定管理员 `admin`，必须为 8–256 个字符；管理员已存在时不会自动改密 |
 | `DSM_REGISTRATION_ENABLED` | `false` | 是否开放注册页面和注册 API，只接受 `true` 或 `false` |
 | `DSM_COOKIE_SECURE` | `false` | 使用 HTTPS 时设为 `true`，使会话 Cookie 仅通过安全连接发送 |
+| `DSM_BUILD_DEBIAN_MIRROR` | Debian 官方仓库 | Docker 构建阶段使用的 Debian 主仓库镜像；设置后删除 `bookworm-security` 仓库 |
+| `DSM_BUILD_NPM_REGISTRY` | npm 官方 registry | 构建 Harness 和向运行镜像安装 pnpm 时使用的 npm Registry |
 | `DSM_PLUGIN_NPM_REGISTRY` | npm 官方 registry | 后台尚未保存配置时使用的启动默认 Registry |
 | `DSM_PLUGIN_NPM_TOKEN` | 无 | 私有 registry 的只读 Token，只在插件安装临时目录中使用 |
 | `DSM_LOG_LEVEL` | `INFO` | Supervisor 日志级别 |
 
 旧服务兼容接口继续使用其原有变量名 `DSH_REGISTER_API_KEY`、`DSH_LOGIN_API_KEY` 和 `LOGIN_TICKET_TTL`，避免旧调用方修改部署配置；它们只控制下文的三个兼容接口。`DSM_STATE_ROOT` 和 `DSM_CONTROL_SOCKET` 是容器内部进程间配置，标准 Compose 部署无需设置。
+
+两个 `DSM_BUILD_*` 变量只在 `docker build` 时生效，不会进入最终容器的运行环境。设置 `DSM_BUILD_DEBIAN_MIRROR` 后会把 Debian 主仓库替换为该镜像，并移除基础镜像中的 `bookworm-security` 仓库段，以适配不提供 security 仓库的镜像站；这也意味着该次构建不会获取 Debian security 更新。HTTP 和 HTTPS 镜像均可使用，slim 阶段会从同版本 builder 引入 CA bundle 完成首次 TLS 校验。GitHub Actions 使用同名 Repository Variables；未配置时保持基础镜像原有的官方源。
 
 ## 注册和登录 API
 

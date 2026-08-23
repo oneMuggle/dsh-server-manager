@@ -6,6 +6,9 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile
+      args:
+        DSM_BUILD_DEBIAN_MIRROR: "${DSM_BUILD_DEBIAN_MIRROR:-}"
+        DSM_BUILD_NPM_REGISTRY: "${DSM_BUILD_NPM_REGISTRY:-}"
     ports:
       - "3082:8080"
     cap_add:

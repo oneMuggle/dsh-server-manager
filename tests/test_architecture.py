@@ -83,6 +83,25 @@ class DependencyDirectionTests(unittest.TestCase):
                 violations[path.relative_to(PROJECT_ROOT).as_posix()] = found
         self.assertEqual(violations, {})
 
+    def test_container_build_mirrors_are_wired_and_custom_mirror_drops_security(self) -> None:
+        dockerfile = (PROJECT_ROOT / "docker" / "Dockerfile").read_text()
+        compose = (PROJECT_ROOT / "docker" / "compose.yml").read_text()
+        workflow = (
+            PROJECT_ROOT / ".github" / "workflows" / "publish-image.yml"
+        ).read_text()
+        for name in (
+            "DSM_BUILD_DEBIAN_MIRROR",
+            "DSM_BUILD_NPM_REGISTRY",
+        ):
+            with self.subTest(name=name):
+                self.assertIn(f"ARG {name}", dockerfile)
+                self.assertIn(name, compose)
+                self.assertIn(name, workflow)
+        self.assertIn("!/bookworm-security/", dockerfile)
+        self.assertNotIn("DSM_BUILD_DEBIAN_SECURITY_MIRROR", dockerfile)
+        self.assertIn("/tmp/ca-certificates.crt", dockerfile)
+        self.assertIn("ca-certificates", dockerfile)
+
     def test_common_never_imports_runtime_packages(self) -> None:
         common_root = PROJECT_ROOT / "common"
         violations = {
