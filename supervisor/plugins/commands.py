@@ -17,7 +17,6 @@ from .installer import MAX_PROCESS_OUTPUT, bounded_output
 
 INSTALLER_USER = "dsh-plugin-installer"
 DEFAULT_NPM_REGISTRY = "https://registry.npmjs.org/"
-ALLOWED_BUILD_PACKAGES = ("node-pty", "protobufjs")
 
 
 def normalize_registry_url(value: str) -> str:
@@ -174,7 +173,7 @@ class PluginCommandRunner:
             str(self.store),
             "add",
             "--save-exact",
-            *(f"--allow-build={package}" for package in ALLOWED_BUILD_PACKAGES),
+            "--dangerously-allow-all-builds",
             "--package-import-method=copy",
             "--reporter=append-only",
         ]

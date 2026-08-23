@@ -249,7 +249,7 @@ Swagger UI 位于 `/docs`，OpenAPI 文档位于 `/openapi.json`。Swagger UI �
 
 离线导入接口为 `POST /api/v1/plugins/imports/archive`，请求体直接使用 `application/octet-stream` 传输 `.tgz`。批量策略接口为 `POST /api/v1/plugins/jobs`，导入和策略操作均异步返回任务 ID，可通过 `GET /api/v1/plugins/jobs/{job_id}` 查询结果。所有接口仅允许管理员 Cookie 或 Bearer Token 调用。
 
-环境变量 `DSM_PLUGIN_NPM_REGISTRY` 只提供启动默认值，后台保存的地址优先级更高。私有源的只读 `DSM_PLUGIN_NPM_TOKEN` 仍只允许通过环境变量注入，不写入 SQLite，也不会在页面或 API 中回显。安装过程使用独立低权限账号，只允许 `node-pty` 和 `protobufjs` 执行构建脚本，其他依赖的 lifecycle scripts 不会执行；发布后保留必要的可执行位，并把共享版本改为 root 所有的只读目录。插件自身仍会进入被分配用户的 DSH 进程执行，所以只能导入可信插件。
+环境变量 `DSM_PLUGIN_NPM_REGISTRY` 只提供启动默认值，后台保存的地址优先级更高。私有源的只读 `DSM_PLUGIN_NPM_TOKEN` 仍只允许通过环境变量注入，不写入 SQLite，也不会在页面或 API 中回显。安装过程使用独立低权限账号，但允许插件及其全部依赖执行 npm lifecycle 和原生构建脚本；这些脚本不能获得 root 权限，但可以访问网络、安装临时目录和共享 pnpm store。发布后共享版本会改为 root 所有的只读目录。导入阶段和运行阶段都只能使用可信插件。
 
 ## 上传文件
 
