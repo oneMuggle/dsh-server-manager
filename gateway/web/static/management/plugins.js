@@ -61,21 +61,22 @@ function el(tag, text, className) {
 
 function sharedUserStatus(plugin, username) {
   const state = (plugin.users || []).find(item => item.username === username);
-  if (!state) return {kind:'unassigned', label:'未安装', detail:''};
-  if (state.state === 'failed') return {kind:'failed', label:'异常', detail:state.error || state.version};
-  if (state.state !== 'ready') return {kind:'pending', label:'处理中', detail:state.version};
-  return {kind:state.enabled ? 'enabled' : 'disabled', label:state.enabled ? '已启用' : '已停用', detail:state.version};
+  if (!state) return {kind:'unassigned', label:'未安装', version:'—', detail:''};
+  const version = state.version || '未知';
+  if (state.state === 'failed') return {kind:'failed', label:'异常', version, detail:state.error || ''};
+  if (state.state !== 'ready') return {kind:'pending', label:'处理中', version, detail:''};
+  return {kind:state.enabled ? 'enabled' : 'disabled', label:state.enabled ? '已启用' : '已停用', version, detail:''};
 }
 
 function builtinUserStatus(plugin, username) {
   const state = (plugin.users || []).find(item => item.username === username);
   return state && state.enabled
-    ? {kind:'enabled', label:'已启用', detail:''}
-    : {kind:'disabled', label:'已停用', detail:''};
+    ? {kind:'enabled', label:'已启用', version:'随镜像', detail:''}
+    : {kind:'disabled', label:'已停用', version:'随镜像', detail:''};
 }
 
 function currentUserStatus(username) {
-  if (!pendingAction) return {kind:'unassigned', label:'未知', detail:''};
+  if (!pendingAction) return {kind:'unassigned', label:'未知', version:'—', detail:''};
   return pendingAction.kind === 'builtin'
     ? builtinUserStatus(pendingAction.plugin, username)
     : sharedUserStatus(pendingAction.plugin, username);
@@ -109,9 +110,12 @@ function renderUserPicker() {
     const identity = el('span', null, 'user-identity');
     identity.append(el('strong', user.username));
     identity.append(el('small', user.disabled ? '用户账号已停用' : '用户账号已启用', user.disabled ? 'account-off' : 'account-on'));
+    const version = el('span', null, 'picker-version');
+    version.append(el('small', '当前版本'));
+    version.append(el('strong', status.version));
     const pluginState = el('span', status.label, `picker-status status-${status.kind}`);
     if (status.detail) pluginState.title = status.detail;
-    row.append(checkbox, identity, pluginState);
+    row.append(checkbox, identity, version, pluginState);
     assignmentUsers.append(row);
   }
   updateSelectionSummary();
@@ -124,7 +128,15 @@ function openAssignmentDialog(kind, plugin, action, versionId) {
   assignmentFuture.checked = false;
   const pluginName = kind === 'builtin' ? plugin.entryId : plugin.packageName;
   assignmentTitle.textContent = `${actionLabels[action]} ${pluginName}`;
-  assignmentDescription.textContent = '查看当前状态并选择一个或多个目标用户。';
+  if (kind === 'builtin') {
+    assignmentDescription.textContent = '查看当前状态并选择一个或多个目标用户。';
+  } else {
+    const selectedVersion = (plugin.versions || []).find(version => Number(version.id) === Number(versionId));
+    const version = selectedVersion ? selectedVersion.version : '未知';
+    assignmentDescription.textContent = action === 'install'
+      ? `目标版本：${version}。列表显示每个用户当前已安装的版本。`
+      : `${actionLabels[action]}作用于用户当前已安装的版本，不会切换版本；版本选择仅用于安装操作。`;
+  }
   assignmentSubmit.textContent = `批量${actionLabels[action]}`;
   renderUserPicker();
   assignmentDialog.showModal();

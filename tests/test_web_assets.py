@@ -171,8 +171,11 @@ class ManagementWebAssetTests(unittest.TestCase):
         self.assertIn("function renderUserPicker", script)
         self.assertIn("usernames:[...selectedUsers]", script)
         self.assertIn("selectedVersions", script)
+        self.assertIn("当前版本", script)
+        self.assertIn("status.version", script)
         self.assertIn("dialog::backdrop", stylesheet)
         self.assertIn(".user-option", stylesheet)
+        self.assertIn(".picker-version", stylesheet)
 
     def test_plugin_management_configures_the_effective_registry(self) -> None:
         html = (TEMPLATE_ROOT / "plugins.html").read_text()
