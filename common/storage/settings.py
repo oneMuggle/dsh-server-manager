@@ -9,6 +9,7 @@ from .database import read_connection, utc_now, write_connection
 
 
 PLUGIN_NPM_REGISTRY_KEY = "plugins.npm_registry"
+PYTHON_PIP_INDEX_KEY = "python.pip_index"
 
 
 def create_settings_schema(connection: sqlite3.Connection) -> None:
@@ -61,3 +62,11 @@ def get_plugin_npm_registry(path: Path) -> str | None:
 
 def set_plugin_npm_registry(path: Path, value: str | None) -> None:
     set_setting(path, PLUGIN_NPM_REGISTRY_KEY, value)
+
+
+def get_python_pip_index(path: Path) -> str | None:
+    return get_setting(path, PYTHON_PIP_INDEX_KEY)
+
+
+def set_python_pip_index(path: Path, value: str | None) -> None:
+    set_setting(path, PYTHON_PIP_INDEX_KEY, value)

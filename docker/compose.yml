@@ -9,6 +9,7 @@ services:
       args:
         DSM_BUILD_DEBIAN_MIRROR: "${DSM_BUILD_DEBIAN_MIRROR:-}"
         DSM_BUILD_NPM_REGISTRY: "${DSM_BUILD_NPM_REGISTRY:-}"
+        DSM_BUILD_PIP_INDEX: "${DSM_BUILD_PIP_INDEX:-}"
     ports:
       - "3082:8080"
     cap_add:

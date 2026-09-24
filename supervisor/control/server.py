@@ -16,12 +16,14 @@ from common.contracts.control import (
     CreateUserRequest,
     DiscoverPluginVersionsRequest,
     GetPluginRegistryRequest,
+    GetPythonPipIndexRequest,
     ImportOfflinePluginRequest,
     ImportOnlinePluginRequest,
     InstallUploadRequest,
     ListUploadDirectoriesRequest,
     UpdateUserRequest,
     UpdatePluginRegistryRequest,
+    UpdatePythonPipIndexRequest,
     UserMetricsRequest,
     error_response,
     parse_control_request,
@@ -104,6 +106,12 @@ class ControlServer:
                     elif isinstance(request, UpdatePluginRegistryRequest):
                         result = await self.owner.update_plugin_registry(
                             request.registry_url
+                        )
+                    elif isinstance(request, GetPythonPipIndexRequest):
+                        result = await self.owner.python_pip_index_configuration()
+                    elif isinstance(request, UpdatePythonPipIndexRequest):
+                        result = await self.owner.update_python_pip_index(
+                            request.pip_index_url
                         )
                     elif isinstance(request, ImportOfflinePluginRequest):
                         result = await self.owner.import_offline_plugin(

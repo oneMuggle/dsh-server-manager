@@ -5,7 +5,12 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from ..runtime import config
 from ..services.auth import request_user, user_role
-from ..web.pages import admin_page, auth_page, plugin_admin_page
+from ..web.pages import (
+    admin_page,
+    auth_page,
+    plugin_admin_page,
+    system_settings_page,
+)
 
 
 router = APIRouter()
@@ -53,3 +58,11 @@ async def plugin_management_page(request: Request) -> Response:
     if redirect:
         return redirect
     return HTMLResponse(plugin_admin_page(), headers={"Cache-Control": "no-store"})
+
+
+@router.get("/admin/settings", response_class=HTMLResponse, include_in_schema=False)
+async def system_settings_management_page(request: Request) -> Response:
+    redirect = _require_management_page(request)
+    if redirect:
+        return redirect
+    return HTMLResponse(system_settings_page(), headers={"Cache-Control": "no-store"})

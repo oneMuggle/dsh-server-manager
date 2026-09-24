@@ -1,5 +1,6 @@
 ARG DSM_BUILD_DEBIAN_MIRROR=""
 ARG DSM_BUILD_NPM_REGISTRY=""
+ARG DSM_BUILD_PIP_INDEX=""
 
 FROM node:24-bookworm AS builder
 
@@ -27,6 +28,7 @@ FROM node:24-bookworm-slim AS runtime
 
 ARG DSM_BUILD_DEBIAN_MIRROR
 ARG DSM_BUILD_NPM_REGISTRY
+ARG DSM_BUILD_PIP_INDEX
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -60,7 +62,11 @@ COPY --from=builder /opt/deepseek-harness /opt/deepseek-harness
 COPY requirements.txt /opt/dsh-server-manager/requirements.txt
 
 RUN python3 -m venv /opt/venv \
-    && /opt/venv/bin/pip install --no-cache-dir -r /opt/dsh-server-manager/requirements.txt \
+    && if [ -n "$DSM_BUILD_PIP_INDEX" ]; then \
+      /opt/venv/bin/pip install --no-cache-dir --index-url "$DSM_BUILD_PIP_INDEX" -r /opt/dsh-server-manager/requirements.txt; \
+    else \
+      /opt/venv/bin/pip install --no-cache-dir -r /opt/dsh-server-manager/requirements.txt; \
+    fi \
     && if [ -n "$DSM_BUILD_NPM_REGISTRY" ]; then \
       npm install --global --registry="$DSM_BUILD_NPM_REGISTRY" pnpm@11.7.0; \
     else \
