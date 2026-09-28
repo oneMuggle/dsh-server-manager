@@ -13,6 +13,7 @@ from common.storage.builtin_plugins import (
 )
 from common.storage.plugin_catalog import get_plugin_version
 from common.storage.plugin_jobs import create_job, unfinished_job_ids
+from common.storage.settings import get_python_pip_index, set_python_pip_index
 from common.storage.users import (
     RegistryError,
     add_user,
@@ -55,6 +56,7 @@ class Supervisor:
         self.tenants = TenantManager(
             users_root=self.config.users_root,
             harness_cli=self.config.harness_cli,
+            database_path=self.config.registry_path,
         )
         self.registry_lock = asyncio.Lock()
         self.fatal = asyncio.Event()
@@ -253,6 +255,28 @@ class Supervisor:
         self, registry_url: str | None
     ) -> dict[str, object]:
         return self.plugins.update_registry(registry_url)
+
+    async def python_pip_index_configuration(self) -> dict[str, object]:
+        configured = get_python_pip_index(self.config.registry_path)
+        return {
+            "pip_index_url": configured,
+            "source": "configured" if configured else "default",
+            "default_pip_index_url": "https://pypi.org/simple",
+        }
+
+    async def update_python_pip_index(
+        self, pip_index_url: str | None
+    ) -> dict[str, object]:
+        if pip_index_url is not None:
+            pip_index_url = pip_index_url.strip()
+            if not pip_index_url:
+                pip_index_url = None
+            elif not pip_index_url.startswith(("http://", "https://")):
+                raise ValueError("pip 镜像源必须是 HTTP(S) URL")
+            elif len(pip_index_url) > 2048:
+                raise ValueError("pip 镜像源地址不能超过 2048 个字符")
+        set_python_pip_index(self.config.registry_path, pip_index_url)
+        return await self.python_pip_index_configuration()
 
     async def import_offline_plugin(
         self, spool_name: str, created_by: str

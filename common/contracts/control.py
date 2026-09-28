@@ -70,6 +70,15 @@ class UpdatePluginRegistryRequest(_ControlRequest):
     registry_url: str | None = None
 
 
+class GetPythonPipIndexRequest(_ControlRequest):
+    action: Literal["python_pip_index_get"]
+
+
+class UpdatePythonPipIndexRequest(_ControlRequest):
+    action: Literal["python_pip_index_update"]
+    pip_index_url: str | None = None
+
+
 class ImportOfflinePluginRequest(_ControlRequest):
     action: Literal["plugin_offline_import"]
     spool_name: str
@@ -107,6 +116,8 @@ ControlRequest = Annotated[
         DiscoverPluginVersionsRequest,
         GetPluginRegistryRequest,
         UpdatePluginRegistryRequest,
+        GetPythonPipIndexRequest,
+        UpdatePythonPipIndexRequest,
         ImportOfflinePluginRequest,
         AssignPluginRequest,
         AssignBuiltinPluginRequest,
@@ -140,12 +151,14 @@ __all__ = [
     "CreateUserRequest",
     "DiscoverPluginVersionsRequest",
     "GetPluginRegistryRequest",
+    "GetPythonPipIndexRequest",
     "ImportOfflinePluginRequest",
     "ImportOnlinePluginRequest",
     "InstallUploadRequest",
     "ListUploadDirectoriesRequest",
-    "UpdateUserRequest",
     "UpdatePluginRegistryRequest",
+    "UpdatePythonPipIndexRequest",
+    "UpdateUserRequest",
     "UserMetricsRequest",
     "error_response",
     "parse_control_request",

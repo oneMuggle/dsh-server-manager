@@ -30,3 +30,7 @@ def admin_page() -> str:
 
 def plugin_admin_page() -> str:
     return _management_page("plugins.html", "插件管理", "正在加载…")
+
+
+def system_settings_page() -> str:
+    return _management_page("system-settings.html", "系统设置", "配置系统参数")

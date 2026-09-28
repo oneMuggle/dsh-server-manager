@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>系统设置 · DeepSeek Harness</title>
+  <link rel="stylesheet" href="/gateway-assets/admin.css?v=3">
+  <style>
+    .settings-section {
+      margin-bottom: 2rem;
+      padding: 1.5rem;
+      background: var(--panel-bg, #f8f9fa);
+      border-radius: 8px;
+    }
+    .settings-section h2 {
+      margin-top: 0;
+      margin-bottom: 0.5rem;
+    }
+    .settings-section p.muted {
+      margin-bottom: 1rem;
+    }
+    .settings-form {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .settings-form input[type="url"] {
+      flex: 1;
+      min-width: 200px;
+      padding: 0.5rem;
+      border: 1px solid var(--border-color, #ddd);
+      border-radius: 4px;
+      font-size: 0.95rem;
+    }
+    .settings-form button {
+      padding: 0.5rem 1rem;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.95rem;
+    }
+    .settings-form button.primary {
+      background: var(--primary-color, #007bff);
+      color: white;
+    }
+    .settings-form button.primary:hover {
+      background: var(--primary-hover, #0056b3);
+    }
+    .settings-form button[type="button"] {
+      background: var(--button-bg, #6c757d);
+      color: white;
+    }
+    .settings-form button[type="button"]:hover {
+      background: var(--button-hover, #5a6268);
+    }
+    .settings-status {
+      margin-top: 0.5rem;
+      padding: 0.5rem;
+      border-radius: 4px;
+      font-size: 0.9rem;
+    }
+    .settings-status.success {
+      background: #d4edda;
+      color: #155724;
+    }
+    .settings-status.error {
+      background: #f8d7da;
+      color: #721c24;
+    }
+  </style>
+</head>
+<body><main>
+  <!-- MANAGEMENT_HEADER -->
+  <section class="settings-section">
+    <h2>Python pip 镜像源</h2>
+    <p class="muted">配置内网 pip 镜像源，方便 DSH 执行任务时安装额外的 Python 库。</p>
+    <form id="pip-index-form" class="settings-form">
+      <input id="pip-index-url" name="pipIndexUrl" type="url" maxlength="2048"
+             placeholder="https://pypi.tuna.tsinghua.edu.cn/simple"
+             aria-label="pip 镜像源地址">
+      <button class="primary" type="submit">保存镜像源</button>
+      <button id="pip-index-reset" type="button">恢复默认</button>
+    </form>
+    <p id="pip-index-status" class="muted">正在读取当前配置…</p>
+  </section>
+
+  <section class="settings-section">
+    <h2>npm Registry 镜像源</h2>
+    <p class="muted">配置内网 npm 镜像源，方便安装插件。</p>
+    <p class="muted">请在 <a href="/admin/plugins">插件管理</a> 页面配置 npm Registry。</p>
+  </section>
+</main>
+<script src="/gateway-assets/system-settings.js?v=1"></script></body></html>

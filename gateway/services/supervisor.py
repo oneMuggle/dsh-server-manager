@@ -153,6 +153,21 @@ async def update_plugin_registry(
     )
 
 
+async def python_pip_index_configuration(socket_path: Path) -> dict[str, Any]:
+    return await _request(socket_path, {"action": "python_pip_index_get"}, timeout=10)
+
+
+async def update_python_pip_index(
+    socket_path: Path,
+    pip_index_url: str | None,
+) -> dict[str, Any]:
+    return await _request(
+        socket_path,
+        {"action": "python_pip_index_update", "pip_index_url": pip_index_url},
+        timeout=10,
+    )
+
+
 async def import_offline_plugin(
     socket_path: Path,
     spool_name: str,

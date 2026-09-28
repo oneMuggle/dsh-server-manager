@@ -7,6 +7,8 @@ import signal
 from pathlib import Path
 from typing import Any
 
+from common.storage.settings import get_python_pip_index
+
 
 LOGGER = logging.getLogger("dsm.supervisor")
 async def http_ready(port: int) -> bool:
@@ -27,9 +29,16 @@ async def http_ready(port: int) -> bool:
 
 
 class TenantManager:
-    def __init__(self, *, users_root: Path, harness_cli: str) -> None:
+    def __init__(
+        self,
+        *,
+        users_root: Path,
+        harness_cli: str,
+        database_path: Path,
+    ) -> None:
         self.users_root = users_root
         self.harness_cli = harness_cli
+        self.database_path = database_path
         self.tasks: dict[str, asyncio.Task[None]] = {}
         self.ready: dict[str, asyncio.Event] = {}
         self.processes: dict[str, asyncio.subprocess.Process] = {}
@@ -66,15 +75,26 @@ class TenantManager:
         state = tenant_root / "state"
         delay = 1
 
+        # 构建环境变量列表
+        env_vars = [
+            f"HOME={home}",
+            f"DSH_HOME={state}",
+            "SHELL=/bin/bash",
+            "PATH=/usr/local/bin:/usr/bin:/bin",
+        ]
+
+        # 读取 pip index 配置
+        pip_index_url = get_python_pip_index(self.database_path)
+        if pip_index_url:
+            env_vars.append(f"PIP_INDEX_URL={pip_index_url}")
+            LOGGER.info("DSH tenant %s using pip index: %s", username, pip_index_url)
+
         while not self.stopping:
             LOGGER.info("starting DSH tenant %s on loopback port %s", username, port)
             process = await asyncio.create_subprocess_exec(
                 "runuser", "-u", os_user, "--",
                 "env", "-i",
-                f"HOME={home}",
-                f"DSH_HOME={state}",
-                "SHELL=/bin/bash",
-                "PATH=/usr/local/bin:/usr/bin:/bin",
+                *env_vars,
                 "/usr/local/bin/node",
                 self.harness_cli,
                 "web",
